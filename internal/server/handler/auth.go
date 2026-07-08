@@ -181,3 +181,66 @@ func (h *APIKeyHandler) Delete(c *gin.Context) {
 	}
 	response.OK(c, gin.H{"deleted": true})
 }
+
+type CallerTokenHandler struct {
+	auth *auth.Service
+}
+
+func NewCallerTokenHandler(authSvc *auth.Service) *CallerTokenHandler {
+	return &CallerTokenHandler{auth: authSvc}
+}
+
+func (h *CallerTokenHandler) Create(c *gin.Context) {
+	var req auth.CreateCallerTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	plain, row, err := h.auth.CreateCallerToken(c.Request.Context(), req)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{
+		"id":           row.ID,
+		"name":         row.Name,
+		"prefix":       row.Prefix,
+		"channel_id":   row.ChannelID,
+		"tenant_id":    row.TenantID,
+		"enabled":      row.Enabled,
+		"remark":       row.Remark,
+		"expires_at":   row.ExpiresAt,
+		"created_at":   row.CreatedAt,
+		"caller_token": plain,
+	})
+}
+
+func (h *CallerTokenHandler) List(c *gin.Context) {
+	rows, err := h.auth.ListCallerTokens(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, rows)
+}
+
+func (h *CallerTokenHandler) Update(c *gin.Context) {
+	var req auth.UpdateCallerTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.auth.UpdateCallerToken(c.Request.Context(), c.Param("id"), req); err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"updated": true})
+}
+
+func (h *CallerTokenHandler) Delete(c *gin.Context) {
+	if err := h.auth.DeleteCallerToken(c.Request.Context(), c.Param("id")); err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"deleted": true})
+}

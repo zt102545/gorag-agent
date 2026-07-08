@@ -18,6 +18,10 @@ export function listQA(params: Record<string, any>) {
   return http.get('/knowledge/qa', { params })
 }
 
+export function getQA(id: string) {
+  return http.get(`/knowledge/qa/${id}`)
+}
+
 export function createQA(data: any) {
   return http.post('/knowledge/qa', data)
 }
@@ -102,6 +106,22 @@ export function setAPIKeyEnabled(id: string, enabled: boolean) {
 
 export function deleteAPIKey(id: string) {
   return http.delete(`/api-keys/${id}`)
+}
+
+export function listCallerTokens() {
+  return http.get('/caller-tokens')
+}
+
+export function createCallerToken(data: any) {
+  return http.post('/caller-tokens', data)
+}
+
+export function updateCallerToken(id: string, data: any) {
+  return http.put(`/caller-tokens/${id}`, data)
+}
+
+export function deleteCallerToken(id: string) {
+  return http.delete(`/caller-tokens/${id}`)
 }
 
 export function listSessions(params: Record<string, any>) {

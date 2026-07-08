@@ -18,6 +18,17 @@
       <div v-for="(m, i) in messages" :key="i" class="bubble" :class="m.role">
         <div class="role">{{ roleLabel(m.role) }}</div>
         <div class="content">{{ m.content }}</div>
+        <div v-if="m.role === 'tool' && m.qaHits?.length" class="qa-debug">
+          <div class="qa-debug-title">命中 QA</div>
+          <div v-for="(hit, hitIndex) in m.qaHits" :key="hitIndex" class="qa-hit">
+            <div class="qa-hit-meta">
+              <el-tag v-if="hit.category" size="small">{{ hit.category }}</el-tag>
+              <el-tag v-for="tag in hit.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+            </div>
+            <div class="qa-hit-question">Q: {{ hit.question }}</div>
+            <div class="qa-hit-answer">A: {{ hit.answer }}</div>
+          </div>
+        </div>
       </div>
       <div v-if="sending" class="bubble assistant typing">
         <div class="role">助手</div>
@@ -56,6 +67,14 @@ import { streamPlaygroundChat, streamPlaygroundApprove, type SSEEvent } from '@/
 interface ChatMsg {
   role: string
   content: string
+  qaHits?: QADebugHit[]
+}
+
+interface QADebugHit {
+  category: string
+  tags: string[]
+  question: string
+  answer: string
 }
 
 const sessionId = ref('')
@@ -119,7 +138,7 @@ function handleSSE(ev: SSEEvent) {
   }
   if (ev.type === 'tool_result' || ev.type === 'tool_result_chunk') {
     if (ev.content) {
-      messages.value.push({ role: 'tool', content: ev.content })
+      messages.value.push({ role: 'tool', content: ev.content, qaHits: parseQAHits(ev.content) })
       void scrollBottom()
     }
     return
@@ -179,6 +198,41 @@ async function approve(ok: boolean) {
     await scrollBottom()
   }
 }
+
+function parseQAHits(content: string): QADebugHit[] {
+  const blocks = content
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+
+  const hits: QADebugHit[] = []
+  for (const block of blocks) {
+    const lines = block.split('\n').map((line) => line.trim())
+    if (lines.length < 3 || !lines[0].startsWith('[')) continue
+
+    const metaLine = lines[0]
+    const questionLine = lines.find((line) => line.startsWith('Q:'))
+    const answerLine = lines.find((line) => line.startsWith('A:'))
+    if (!questionLine || !answerLine) continue
+
+    const categoryMatch = metaLine.match(/分类:\s*(.*?)(?=\s+标签:|$)/)
+    const tagsMatch = metaLine.match(/标签:\s*(.+)$/)
+    const tags = tagsMatch?.[1]
+      ? tagsMatch[1]
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean)
+      : []
+
+    hits.push({
+      category: categoryMatch?.[1]?.trim() || '',
+      tags,
+      question: questionLine.replace(/^Q:\s*/, ''),
+      answer: answerLine.replace(/^A:\s*/, ''),
+    })
+  }
+  return hits
+}
 </script>
 
 <style scoped>
@@ -237,6 +291,38 @@ async function approve(ok: boolean) {
 .bubble.tool {
   background: #f3f4f6;
   font-size: 13px;
+}
+.qa-debug {
+  margin-top: 10px;
+  border-top: 1px dashed #d1d5db;
+  padding-top: 10px;
+}
+.qa-debug-title {
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 8px;
+}
+.qa-hit {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 8px;
+}
+.qa-hit-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.qa-hit-question,
+.qa-hit-answer {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+.qa-hit-question {
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 .bubble.typing {
   opacity: 0.9;

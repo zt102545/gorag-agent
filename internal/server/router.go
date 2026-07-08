@@ -18,6 +18,7 @@ type Deps struct {
 	AuthHandler         *handler.AuthHandler
 	UserHandler         *handler.UserHandler
 	APIKeyHandler       *handler.APIKeyHandler
+	CallerTokenHandler  *handler.CallerTokenHandler
 	SettingsHandler     *handler.SettingsHandler
 	AdminSessionHandler *handler.AdminSessionHandler
 }
@@ -33,16 +34,19 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 	r.GET("/health", handler.Health)
 	r.GET("/api/v1/health", handler.Health)
 
-	biz := r.Group("/api/v1/biz", middleware.APIKeyAuth(deps.Auth))
+	biz := r.Group("/api/v1/biz", middleware.BizAuth(deps.Auth), middleware.BizRateLimit())
 	{
+		biz.POST("/chat/ask", deps.ChatHandler.Ask)
+		biz.GET("/users/:callerUserID/sessions", deps.SessionHandler.ListByUser)
+
 		sessions := biz.Group("/sessions")
 		{
 			sessions.POST("", deps.SessionHandler.Create)
 			sessions.GET("/:id", deps.SessionHandler.Get)
 			sessions.GET("/:id/history", deps.SessionHandler.History)
 			sessions.DELETE("/:id", deps.SessionHandler.Delete)
-			sessions.POST("/:id/chat", deps.ChatHandler.Chat)
-			sessions.POST("/:id/approve", deps.ApprovalHandler.Approve)
+			sessions.POST("/:id/chat", middleware.SessionSerial(), deps.ChatHandler.Chat)
+			sessions.POST("/:id/approve", middleware.SessionSerial(), deps.ApprovalHandler.Approve)
 		}
 	}
 
@@ -105,6 +109,11 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 				adminOnly.PUT("/api-keys/:id", deps.APIKeyHandler.SetEnabled)
 				adminOnly.DELETE("/api-keys/:id", deps.APIKeyHandler.Delete)
 
+				adminOnly.GET("/caller-tokens", deps.CallerTokenHandler.List)
+				adminOnly.POST("/caller-tokens", deps.CallerTokenHandler.Create)
+				adminOnly.PUT("/caller-tokens/:id", deps.CallerTokenHandler.Update)
+				adminOnly.DELETE("/caller-tokens/:id", deps.CallerTokenHandler.Delete)
+
 				adminOnly.GET("/providers/chat", deps.SettingsHandler.GetChatProvider)
 				adminOnly.PUT("/providers/chat", deps.SettingsHandler.UpdateChatProvider)
 				adminOnly.GET("/providers/embedding", deps.SettingsHandler.GetEmbeddingProvider)
@@ -112,34 +121,6 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 
 				adminOnly.PUT("/prompts/:key", deps.SettingsHandler.UpdatePrompt)
 			}
-		}
-	}
-
-	// Legacy paths (deprecated)
-	legacy := r.Group("/api/v1", middleware.Deprecate("use /api/v1/biz or /api/v1/admin"))
-	{
-		sessions := legacy.Group("/sessions", middleware.APIKeyAuth(deps.Auth))
-		{
-			sessions.POST("", deps.SessionHandler.Create)
-			sessions.GET("/:id", deps.SessionHandler.Get)
-			sessions.GET("/:id/history", deps.SessionHandler.History)
-			sessions.DELETE("/:id", deps.SessionHandler.Delete)
-			sessions.POST("/:id/chat", deps.ChatHandler.Chat)
-			sessions.POST("/:id/approve", deps.ApprovalHandler.Approve)
-		}
-
-		knowledgeRead := legacy.Group("/knowledge/qa", middleware.JWTAuth(deps.Auth), middleware.RequireRole(auth.RoleViewer))
-		{
-			knowledgeRead.GET("", deps.KnowledgeHandler.List)
-			knowledgeRead.GET("/:id", deps.KnowledgeHandler.Get)
-		}
-
-		knowledgeWrite := legacy.Group("/knowledge/qa", middleware.JWTAuth(deps.Auth), middleware.RequireRole(auth.RoleEditor))
-		{
-			knowledgeWrite.POST("", deps.KnowledgeHandler.Create)
-			knowledgeWrite.POST("/import", deps.KnowledgeHandler.Import)
-			knowledgeWrite.PUT("/:id", deps.KnowledgeHandler.Update)
-			knowledgeWrite.DELETE("/:id", deps.KnowledgeHandler.Delete)
 		}
 	}
 

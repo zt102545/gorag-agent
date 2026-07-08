@@ -23,9 +23,13 @@
           <el-icon><Cpu /></el-icon>
           <span>AI 提供商</span>
         </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/api-keys">
+        <el-menu-item v-if="auth.isAdmin" index="/caller-tokens">
           <el-icon><Key /></el-icon>
-          <span>Biz API Key</span>
+          <span>调用方 Token</span>
+        </el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/api-keys">
+          <el-icon><Tickets /></el-icon>
+          <span>API Keys</span>
         </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/users">
           <el-icon><User /></el-icon>

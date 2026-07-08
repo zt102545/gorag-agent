@@ -5,6 +5,9 @@
       <el-select v-model="query.category" clearable placeholder="分类" style="width: 160px" @change="load">
         <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
       </el-select>
+      <el-select v-model="query.tag" clearable placeholder="标签" style="width: 160px" @change="load">
+        <el-option v-for="t in tags" :key="t" :label="t" :value="t" />
+      </el-select>
       <el-select v-model="query.classify_status" clearable placeholder="补全状态" style="width: 160px" @change="load">
         <el-option label="无需补全" value="none" />
         <el-option label="待补全" value="pending" />
@@ -14,6 +17,8 @@
       </el-select>
       <el-button @click="load">查询</el-button>
       <el-button v-if="auth.canEdit" type="primary" @click="openCreate">新建</el-button>
+      <el-button v-if="auth.canEdit" :disabled="selectedIds.length === 0" @click="onBatchReclassify">批量重分类</el-button>
+      <el-button v-if="auth.canEdit" type="danger" plain :disabled="selectedIds.length === 0" @click="onBatchDelete">批量删除</el-button>
       <el-upload
         v-if="auth.canEdit"
         :show-file-list="false"
@@ -42,7 +47,8 @@
       </template>
     </el-alert>
 
-    <el-table :data="items" v-loading="loading" stripe>
+    <el-table :data="items" v-loading="loading" stripe @selection-change="onSelectionChange">
+      <el-table-column v-if="auth.canEdit" type="selection" width="48" />
       <el-table-column prop="question" label="问题" min-width="180" show-overflow-tooltip />
       <el-table-column prop="answer" label="答案" min-width="200" show-overflow-tooltip />
       <el-table-column prop="category" label="分类" width="120" />
@@ -53,11 +59,16 @@
       </el-table-column>
       <el-table-column label="补全状态" width="110">
         <template #default="{ row }">
-          <el-tag :type="statusType(row.classify_status)" size="small">{{ statusLabel(row.classify_status) }}</el-tag>
+          <div class="status-cell">
+            <el-tag :type="statusType(row.classify_status)" size="small">{{ statusLabel(row.classify_status) }}</el-tag>
+            <div v-if="row.classify_error" class="status-error">{{ row.classify_error }}</div>
+          </div>
         </template>
       </el-table-column>
+      <el-table-column prop="classified_at" label="分类完成时间" width="180" />
       <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
+          <el-button link @click="openDetail(row)">详情</el-button>
           <el-button v-if="auth.canEdit" link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button v-if="auth.canEdit" link type="warning" @click="onReclassify(row)">重新分类</el-button>
           <el-button v-if="auth.canEdit" link type="danger" @click="onDelete(row)">删除</el-button>
@@ -76,133 +87,47 @@
       />
     </div>
 
-    <el-drawer v-model="drawer" :title="editing ? '编辑 QA' : '新建 QA'" size="480px">
-      <el-form label-width="80px">
-        <el-form-item label="问题"><el-input v-model="form.question" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="答案"><el-input v-model="form.answer" type="textarea" :rows="5" /></el-form-item>
-        <el-form-item label="分类"><el-input v-model="form.category" placeholder="可空，空则异步 AI 补全" /></el-form-item>
-        <el-form-item label="标签">
-          <el-select v-model="form.tags" multiple filterable allow-create default-first-option style="width: 100%" />
-        </el-form-item>
-        <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
-      </el-form>
-    </el-drawer>
+    <QAFormDrawer v-model="drawer" :editing="editing" :form="form" :saving="saving" @save="onSave" />
+    <QADetailDrawer v-model="detailDrawer" :detail="detail" :status-label="statusLabel" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadRequestOptions } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import * as api from '@/api/admin'
+import QADetailDrawer from '@/features/qa/components/QADetailDrawer.vue'
+import QAFormDrawer from '@/features/qa/components/QAFormDrawer.vue'
+import { useQAManagement } from '@/features/qa/composables'
 
 const auth = useAuthStore()
-const loading = ref(false)
-const saving = ref(false)
-const importing = ref(false)
-const items = ref<any[]>([])
-const total = ref(0)
-const categories = ref<string[]>([])
-const drawer = ref(false)
-const editing = ref<any>(null)
-const query = reactive({ q: '', category: '', classify_status: '', page: 1, size: 20 })
-const form = reactive({ question: '', answer: '', category: '', tags: [] as string[] })
-
-function statusLabel(s: string) {
-  return ({ none: '无需补全', pending: '待补全', processing: '处理中', completed: '已补全', failed: '失败' } as any)[s] || s
-}
-function statusType(s: string) {
-  return ({ none: 'info', pending: 'warning', processing: '', completed: 'success', failed: 'danger' } as any)[s] || 'info'
-}
-
-async function load() {
-  loading.value = true
-  try {
-    const { data } = await api.listQA(query)
-    items.value = data.items || []
-    total.value = data.total || 0
-  } finally {
-    loading.value = false
-  }
-}
-
-async function loadMeta() {
-  const [c] = await Promise.all([api.listCategories()])
-  categories.value = c.data || []
-}
-
-function openCreate() {
-  editing.value = null
-  Object.assign(form, { question: '', answer: '', category: '', tags: [] })
-  drawer.value = true
-}
-function openEdit(row: any) {
-  editing.value = row
-  Object.assign(form, {
-    question: row.question,
-    answer: row.answer,
-    category: row.category || '',
-    tags: [...(row.tags || [])],
-  })
-  drawer.value = true
-}
-
-async function onSave() {
-  saving.value = true
-  try {
-    if (editing.value) {
-      await api.updateQA(editing.value.id, form)
-    } else {
-      await api.createQA(form)
-    }
-    ElMessage.success('已保存')
-    drawer.value = false
-    await load()
-    await loadMeta()
-  } finally {
-    saving.value = false
-  }
-}
-
-async function onDelete(row: any) {
-  await ElMessageBox.confirm('确认删除该 QA？', '提示', { type: 'warning' })
-  await api.deleteQA(row.id)
-  ElMessage.success('已删除')
-  await load()
-}
-
-async function onReclassify(row: any) {
-  await api.reclassifyQA(row.id)
-  ElMessage.success('已重新入队分类')
-  await load()
-}
-
-async function onImport(opt: UploadRequestOptions) {
-  importing.value = true
-  try {
-    const res = await api.importQA(opt.file as File)
-    const result = res.data
-    const successText = `导入完成：成功 ${result.imported || 0} 条，失败 ${result.failed || 0} 条`
-    if (result.failed && result.errors?.length) {
-      ElMessageBox.alert(result.errors.join('\n'), successText, {
-        type: 'warning',
-        confirmButtonText: '知道了',
-      })
-    } else {
-      ElMessage.success(successText)
-    }
-    await load()
-    await loadMeta()
-  } finally {
-    importing.value = false
-  }
-}
-
-onMounted(async () => {
-  await loadMeta()
-  await load()
-})
+const {
+  categories,
+  detail,
+  detailDrawer,
+  drawer,
+  editing,
+  form,
+  importing,
+  items,
+  loading,
+  onBatchDelete,
+  onBatchReclassify,
+  onDelete,
+  onImport,
+  onReclassify,
+  onSave,
+  onSelectionChange,
+  openCreate,
+  openDetail,
+  openEdit,
+  query,
+  saving,
+  selectedIds,
+  statusLabel,
+  statusType,
+  tags,
+  total,
+  load,
+} = useQAManagement()
 </script>
 
 <style scoped>
@@ -229,5 +154,16 @@ onMounted(async () => {
 }
 .tag {
   margin-right: 4px;
+}
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.status-error {
+  font-size: 12px;
+  color: #dc2626;
+  white-space: normal;
+  line-height: 1.4;
 }
 </style>

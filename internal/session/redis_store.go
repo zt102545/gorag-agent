@@ -30,12 +30,18 @@ func NewRedisStore(client *redis.Client, cfg config.SessionConfig) *RedisStore {
 	}
 }
 
-func (s *RedisStore) Create(ctx context.Context) (*Meta, error) {
+func (s *RedisStore) Create(ctx context.Context, params CreateParams) (*Meta, error) {
 	now := time.Now()
 	meta := &Meta{
-		ID:        uuid.NewString(),
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:             uuid.NewString(),
+		ExternalUserID: params.ExternalUserID,
+		ChannelID:      params.ChannelID,
+		TenantID:       params.TenantID,
+		CallerTokenID:  params.CallerTokenID,
+		APIKeyID:       params.APIKeyID,
+		Meta:           params.Meta,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := s.saveMeta(ctx, meta); err != nil {
 		return nil, err
@@ -81,13 +87,31 @@ func (s *RedisStore) GetMessages(ctx context.Context, sessionID string) ([]*sche
 	return messages, nil
 }
 
-func (s *RedisStore) AppendMessages(ctx context.Context, sessionID string, messages ...*schema.Message) error {
+func (s *RedisStore) AppendMessages(ctx context.Context, sessionID string, params AppendParams, messages ...*schema.Message) error {
 	if len(messages) == 0 {
 		return nil
 	}
 	existing, err := s.GetMessages(ctx, sessionID)
 	if err != nil {
 		return err
+	}
+	if params.ClientMessageID != "" {
+		meta, err := s.Get(ctx, sessionID)
+		if err != nil {
+			return err
+		}
+		if meta.Meta != nil {
+			if last, ok := meta.Meta["last_client_message_id"].(string); ok && last == params.ClientMessageID {
+				return nil
+			}
+		}
+		if meta.Meta == nil {
+			meta.Meta = map[string]any{}
+		}
+		meta.Meta["last_client_message_id"] = params.ClientMessageID
+		if err := s.saveMeta(ctx, meta); err != nil {
+			return err
+		}
 	}
 	merged := append(existing, messages...)
 	payload, err := json.Marshal(merged)

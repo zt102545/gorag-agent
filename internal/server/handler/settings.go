@@ -4,14 +4,15 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/yourorg/agent_customer_service/internal/admin"
+	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 )
 
 type SettingsHandler struct {
-	settings *admin.SettingsService
+	settings *settingsapp.Service
 }
 
-func NewSettingsHandler(settings *admin.SettingsService) *SettingsHandler {
+func NewSettingsHandler(settings *settingsapp.Service) *SettingsHandler {
 	return &SettingsHandler{settings: settings}
 }
 

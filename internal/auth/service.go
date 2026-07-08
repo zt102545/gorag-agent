@@ -37,6 +37,13 @@ type Service struct {
 	cfg config.JWTConfig
 }
 
+type CallerIdentity struct {
+	TokenID   string
+	Name      string
+	ChannelID string
+	TenantID  string
+}
+
 func NewService(gdb *gorm.DB, cfg config.JWTConfig) *Service {
 	return &Service{db: gdb, cfg: cfg}
 }
@@ -220,12 +227,19 @@ func HashAPIKey(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Service) CreateAPIKey(ctx context.Context, name, remark string) (plain string, row *db.BizAPIKey, err error) {
-	rawBytes := make([]byte, 24)
+func generateSecret(prefix string, size int) (string, error) {
+	rawBytes := make([]byte, size)
 	if _, err := rand.Read(rawBytes); err != nil {
+		return "", err
+	}
+	return prefix + hex.EncodeToString(rawBytes), nil
+}
+
+func (s *Service) CreateAPIKey(ctx context.Context, name, remark string) (plain string, row *db.BizAPIKey, err error) {
+	plain, err = generateSecret("cs_", 24)
+	if err != nil {
 		return "", nil, err
 	}
-	plain = "cs_" + hex.EncodeToString(rawBytes)
 	row = &db.BizAPIKey{
 		ID:        uuid.NewString(),
 		Name:      name,
@@ -270,4 +284,101 @@ func (s *Service) ValidateAPIKey(ctx context.Context, raw string) (*db.BizAPIKey
 	now := time.Now()
 	_ = s.db.WithContext(ctx).Model(&row).Update("last_used_at", now).Error
 	return &row, nil
+}
+
+type CreateCallerTokenRequest struct {
+	Name      string     `json:"name" binding:"required"`
+	ChannelID string     `json:"channel_id"`
+	TenantID  string     `json:"tenant_id"`
+	Remark    string     `json:"remark"`
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRequest) (plain string, row *db.CallerToken, err error) {
+	plain, err = generateSecret("ct_", 24)
+	if err != nil {
+		return "", nil, err
+	}
+	row = &db.CallerToken{
+		ID:        uuid.NewString(),
+		Name:      strings.TrimSpace(req.Name),
+		TokenHash: HashAPIKey(plain),
+		Prefix:    plain[:10],
+		ChannelID: strings.TrimSpace(req.ChannelID),
+		TenantID:  strings.TrimSpace(req.TenantID),
+		Enabled:   true,
+		Remark:    strings.TrimSpace(req.Remark),
+		ExpiresAt: req.ExpiresAt,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
+		return "", nil, err
+	}
+	return plain, row, nil
+}
+
+func (s *Service) ListCallerTokens(ctx context.Context) ([]db.CallerToken, error) {
+	var rows []db.CallerToken
+	err := s.db.WithContext(ctx).Order("created_at desc").Find(&rows).Error
+	return rows, err
+}
+
+type UpdateCallerTokenRequest struct {
+	Enabled   *bool      `json:"enabled"`
+	Name      *string    `json:"name"`
+	ChannelID *string    `json:"channel_id"`
+	TenantID  *string    `json:"tenant_id"`
+	Remark    *string    `json:"remark"`
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+func (s *Service) UpdateCallerToken(ctx context.Context, id string, req UpdateCallerTokenRequest) error {
+	updates := map[string]any{
+		"updated_at": time.Now(),
+	}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.Name != nil {
+		updates["name"] = strings.TrimSpace(*req.Name)
+	}
+	if req.ChannelID != nil {
+		updates["channel_id"] = strings.TrimSpace(*req.ChannelID)
+	}
+	if req.TenantID != nil {
+		updates["tenant_id"] = strings.TrimSpace(*req.TenantID)
+	}
+	if req.Remark != nil {
+		updates["remark"] = strings.TrimSpace(*req.Remark)
+	}
+	if req.ExpiresAt != nil {
+		updates["expires_at"] = *req.ExpiresAt
+	}
+	return s.db.WithContext(ctx).Model(&db.CallerToken{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (s *Service) DeleteCallerToken(ctx context.Context, id string) error {
+	return s.db.WithContext(ctx).Delete(&db.CallerToken{}, "id = ?", id).Error
+}
+
+func (s *Service) ValidateCallerToken(ctx context.Context, raw string) (*CallerIdentity, error) {
+	if raw == "" {
+		return nil, fmt.Errorf("missing caller token")
+	}
+	var row db.CallerToken
+	if err := s.db.WithContext(ctx).Where("token_hash = ? AND enabled = ?", HashAPIKey(raw), true).First(&row).Error; err != nil {
+		return nil, fmt.Errorf("invalid caller token")
+	}
+	if row.ExpiresAt != nil && row.ExpiresAt.Before(time.Now()) {
+		return nil, fmt.Errorf("caller token expired")
+	}
+	now := time.Now()
+	_ = s.db.WithContext(ctx).Model(&row).Update("last_used_at", now).Error
+	return &CallerIdentity{
+		TokenID:   row.ID,
+		Name:      row.Name,
+		ChannelID: row.ChannelID,
+		TenantID:  row.TenantID,
+	}, nil
 }

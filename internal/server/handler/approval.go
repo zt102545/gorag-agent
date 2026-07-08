@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"strings"
 
+	"github.com/yourorg/agent_customer_service/internal/server/middleware"
 	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 	"github.com/yourorg/agent_customer_service/pkg/sse"
@@ -82,6 +83,8 @@ func (h *ApprovalHandler) Approve(c *gin.Context) {
 
 	content := strings.TrimSpace(assistantContent.String())
 	if content != "" || len(assistantToolCalls) > 0 {
-		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, schema.AssistantMessage(content, assistantToolCalls))
+		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
+			RequestID: c.GetString(middleware.RequestIDKey),
+		}, schema.AssistantMessage(content, assistantToolCalls))
 	}
 }

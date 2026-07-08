@@ -4,13 +4,13 @@
 
 ## 功能
 
-- 双面 API：Biz（外部客服接入，API Key）与 Admin（GM 管理，JWT+RBAC）
+- 双面 API：Biz（外部客服接入，Caller Token）与 Admin（GM 管理，JWT+RBAC）
 - SSE 流式对话 + HITL 转人工
 - QA 知识库 CRUD / CSV 导入；空分类/标签异步 AI 补全
 - 结构化数据 SQLite / MySQL 可切换；对话 `sessions/messages` 永久留存
 - 向量库支持 `redissearch` / `milvus`
 - Embedding 向量化模型独立配置，不再与 Chat 模型混用
-- Vue3 GM：QA、测试客服、会话留存、Provider、提示词、用户、Biz API Key
+- Vue3 GM：QA、测试客服、会话留存、Provider、提示词、用户、调用方 Token
 
 ## 快速开始
 
@@ -140,13 +140,17 @@ vector_store:
 
 | 存储 | 内容 |
 |------|------|
-| SQLite/MySQL | 用户、API Key、QA 元数据、Provider/提示词、sessions、messages |
+| SQLite/MySQL | 用户、Caller Token、QA 元数据、Provider/提示词、sessions、messages |
 | Redis | 分类队列、HITL checkpoint、以及 `redissearch` 模式下的向量索引 |
 | Milvus | `milvus` 模式下的 QA 向量与检索副本 |
 
 ## Biz API（外部客服接入）
 
-前缀：`/api/v1/biz`，请求头 `X-API-Key: <key>`（在 GM「Biz API Key」创建）。
+前缀：`/api/v1/biz`，请求头 `Authorization: Bearer <caller_token>`（在 GM「调用方 Token」创建）。
+
+更完整的外部接入说明、请求头约定、会话续聊/新会话选择规则、`curl` 示例与 SSE 说明，见：
+
+- [`docs/external-api.md`](docs/external-api.md)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -169,7 +173,7 @@ curl -X POST http://localhost:8080/api/v1/admin/auth/login \
 
 主要资源：
 
-- `/auth/me`、`/users`、`/api-keys`
+- `/auth/me`、`/users`、`/caller-tokens`
 - `/knowledge/qa`（CRUD、import、reclassify、categories、tags）
 - `/providers/chat|embedding`、`/prompts`
 - `/sessions`（只读留存查阅）
@@ -181,7 +185,7 @@ curl -X POST http://localhost:8080/api/v1/admin/auth/login \
 cmd/server/               HTTP 服务入口
 cmd/indexer/              QA CSV 导入 CLI
 internal/db/              GORM 模型与 SQLite/MySQL 拨号
-internal/auth/            JWT 用户 + Biz API Key
+internal/auth/            JWT 用户 + Caller Token
 internal/admin/           Provider / 提示词
 internal/vectorstore/     RedisSearch / Milvus 向量库抽象
 internal/knowledge/qa/    QA（SQL meta + 向量库 + 分类 worker）

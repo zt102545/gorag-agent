@@ -50,6 +50,9 @@ func (s *Service) Search(ctx context.Context, query string) (string, error) {
 		if rec.Category != "" {
 			builder.WriteString(fmt.Sprintf(" 分类: %s", rec.Category))
 		}
+		if len(rec.Tags) > 0 {
+			builder.WriteString(fmt.Sprintf(" 标签: %s", strings.Join(rec.Tags, ", ")))
+		}
 		builder.WriteString("\n")
 		builder.WriteString(fmt.Sprintf("Q: %s\n", rec.Question))
 		builder.WriteString(fmt.Sprintf("A: %s\n", rec.Answer))

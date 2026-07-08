@@ -94,6 +94,23 @@ type BizAPIKey struct {
 
 func (BizAPIKey) TableName() string { return "biz_api_keys" }
 
+type CallerToken struct {
+	ID         string     `gorm:"primaryKey;size:36" json:"id"`
+	Name       string     `gorm:"size:128;not null" json:"name"`
+	TokenHash  string     `gorm:"size:255;not null;index" json:"-"`
+	Prefix     string     `gorm:"size:24;not null" json:"prefix"`
+	ChannelID  string     `gorm:"size:128;index" json:"channel_id,omitempty"`
+	TenantID   string     `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	Enabled    bool       `gorm:"not null;default:true" json:"enabled"`
+	Remark     string     `gorm:"size:255" json:"remark"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+}
+
+func (CallerToken) TableName() string { return "caller_tokens" }
+
 type QAItem struct {
 	ID             string      `gorm:"primaryKey;size:36" json:"id"`
 	Question       string      `gorm:"type:text;not null" json:"question"`
@@ -134,7 +151,12 @@ func (Prompt) TableName() string { return "prompts" }
 
 type Session struct {
 	ID             string     `gorm:"primaryKey;size:36" json:"id"`
+	Title          string     `gorm:"size:255;index" json:"title,omitempty"`
 	ExternalUserID string     `gorm:"size:128;index" json:"external_user_id,omitempty"`
+	ChannelID      string     `gorm:"size:128;index" json:"channel_id,omitempty"`
+	TenantID       string     `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	CallerTokenID  string     `gorm:"size:36;index" json:"caller_token_id,omitempty"`
+	APIKeyID       string     `gorm:"size:36;index" json:"api_key_id,omitempty"`
 	Status         string     `gorm:"size:32;not null;index;default:active" json:"status"`
 	Meta           JSONMap    `gorm:"type:text" json:"meta,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -145,12 +167,14 @@ type Session struct {
 func (Session) TableName() string { return "sessions" }
 
 type Message struct {
-	ID        string    `gorm:"primaryKey;size:36" json:"id"`
-	SessionID string    `gorm:"size:36;not null;index" json:"session_id"`
-	Role      string    `gorm:"size:32;not null" json:"role"`
-	Content   string    `gorm:"type:text" json:"content"`
-	Extra     string    `gorm:"type:text" json:"extra,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID              string    `gorm:"primaryKey;size:36" json:"id"`
+	SessionID       string    `gorm:"size:36;not null;index" json:"session_id"`
+	Role            string    `gorm:"size:32;not null" json:"role"`
+	RequestID       string    `gorm:"size:64;index" json:"request_id,omitempty"`
+	ClientMessageID string    `gorm:"size:128;index" json:"client_message_id,omitempty"`
+	Content         string    `gorm:"type:text" json:"content"`
+	Extra           string    `gorm:"type:text" json:"extra,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 func (Message) TableName() string { return "messages" }

@@ -2,20 +2,24 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	knowledgeapp "github.com/yourorg/agent_customer_service/internal/application/knowledge"
+	sessionapp "github.com/yourorg/agent_customer_service/internal/application/session"
 	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
 	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 )
 
 type KnowledgeHandler struct {
-	qaService *qa.Service
+	service *knowledgeapp.Service
+	jobs    *knowledgeapp.ClassificationJobService
 }
 
-func NewKnowledgeHandler(qaService *qa.Service) *KnowledgeHandler {
-	return &KnowledgeHandler{qaService: qaService}
+func NewKnowledgeHandler(service *knowledgeapp.Service, jobs *knowledgeapp.ClassificationJobService) *KnowledgeHandler {
+	return &KnowledgeHandler{service: service, jobs: jobs}
 }
 
 func (h *KnowledgeHandler) Create(c *gin.Context) {
@@ -24,7 +28,7 @@ func (h *KnowledgeHandler) Create(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	item, err := h.qaService.Create(c.Request.Context(), req)
+	item, err := h.service.Create(c.Request.Context(), req)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -33,7 +37,7 @@ func (h *KnowledgeHandler) Create(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Get(c *gin.Context) {
-	item, err := h.qaService.Get(c.Request.Context(), c.Param("id"))
+	item, err := h.service.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.NotFound(c, err.Error())
 		return
@@ -47,7 +51,7 @@ func (h *KnowledgeHandler) Update(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	item, err := h.qaService.Update(c.Request.Context(), c.Param("id"), req)
+	item, err := h.service.Update(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		response.NotFound(c, err.Error())
 		return
@@ -56,7 +60,7 @@ func (h *KnowledgeHandler) Update(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Delete(c *gin.Context) {
-	if err := h.qaService.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
 		response.NotFound(c, err.Error())
 		return
 	}
@@ -66,7 +70,7 @@ func (h *KnowledgeHandler) Delete(c *gin.Context) {
 func (h *KnowledgeHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	result, err := h.qaService.List(c.Request.Context(), qa.ListQuery{
+	result, err := h.service.List(c.Request.Context(), qa.ListQuery{
 		Category:       c.Query("category"),
 		ClassifyStatus: c.Query("classify_status"),
 		Tag:            c.Query("tag"),
@@ -94,7 +98,7 @@ func (h *KnowledgeHandler) Import(c *gin.Context) {
 	}
 	defer f.Close()
 
-	result, err := h.qaService.ImportCSV(c.Request.Context(), f)
+	result, err := h.service.ImportCSV(c.Request.Context(), f)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -103,7 +107,7 @@ func (h *KnowledgeHandler) Import(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Reclassify(c *gin.Context) {
-	item, err := h.qaService.Reclassify(c.Request.Context(), c.Param("id"))
+	item, err := h.jobs.Reclassify(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.NotFound(c, err.Error())
 		return
@@ -112,7 +116,7 @@ func (h *KnowledgeHandler) Reclassify(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Categories(c *gin.Context) {
-	cats, err := h.qaService.ListCategories(c.Request.Context())
+	cats, err := h.service.ListCategories(c.Request.Context())
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -121,7 +125,7 @@ func (h *KnowledgeHandler) Categories(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Tags(c *gin.Context) {
-	tags, err := h.qaService.ListTags(c.Request.Context())
+	tags, err := h.service.ListTags(c.Request.Context())
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -130,17 +134,31 @@ func (h *KnowledgeHandler) Tags(c *gin.Context) {
 }
 
 type AdminSessionHandler struct {
-	store *session.SQLStore
+	service *sessionapp.Service
 }
 
-func NewAdminSessionHandler(store *session.SQLStore) *AdminSessionHandler {
-	return &AdminSessionHandler{store: store}
+func NewAdminSessionHandler(service *sessionapp.Service) *AdminSessionHandler {
+	return &AdminSessionHandler{service: service}
 }
 
 func (h *AdminSessionHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
-	total, items, err := h.store.List(c.Request.Context(), page, size, c.Query("status"))
+	createdFrom := parseRFC3339Query(c.Query("created_from"))
+	createdTo := parseRFC3339Query(c.Query("created_to"))
+	total, items, err := h.service.AdminList(c.Request.Context(), session.ListQuery{
+		SessionID:      c.Query("session_id"),
+		Q:              c.Query("q"),
+		Page:           page,
+		Size:           size,
+		Status:         c.Query("status"),
+		ExternalUserID: c.Query("caller_user_id"),
+		ChannelID:      c.Query("channel_id"),
+		TenantID:       c.Query("tenant_id"),
+		CallerTokenID:  c.Query("caller_token_id"),
+		CreatedFrom:    createdFrom,
+		CreatedTo:      createdTo,
+	})
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -149,15 +167,25 @@ func (h *AdminSessionHandler) List(c *gin.Context) {
 }
 
 func (h *AdminSessionHandler) Get(c *gin.Context) {
-	meta, err := h.store.Get(c.Request.Context(), c.Param("id"))
+	meta, messages, err := h.service.AdminGet(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.NotFound(c, err.Error())
 		return
 	}
-	messages, err := h.store.GetMessages(c.Request.Context(), c.Param("id"))
-	if err != nil {
-		response.InternalError(c, err.Error())
-		return
+	response.OK(c, gin.H{
+		"session":       meta,
+		"messages":      messages,
+		"message_count": len(messages),
+	})
+}
+
+func parseRFC3339Query(value string) *time.Time {
+	if value == "" {
+		return nil
 	}
-	response.OK(c, gin.H{"session": meta, "messages": messages})
+	ts, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil
+	}
+	return &ts
 }

@@ -63,9 +63,15 @@ type EmbeddingConfig struct {
 }
 
 type RedisConfig struct {
-	Addr     string `mapstructure:"addr"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	Addr         string        `mapstructure:"addr"`
+	Password     string        `mapstructure:"password"`
+	DB           int           `mapstructure:"db"`
+	PoolSize     int           `mapstructure:"pool_size"`
+	MinIdleConns int           `mapstructure:"min_idle_conns"`
+	DialTimeout  time.Duration `mapstructure:"dial_timeout"`
+	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout time.Duration `mapstructure:"write_timeout"`
+	PoolTimeout  time.Duration `mapstructure:"pool_timeout"`
 }
 
 type VectorStoreConfig struct {
@@ -97,9 +103,12 @@ type SessionConfig struct {
 }
 
 type DatabaseConfig struct {
-	Driver string       `mapstructure:"driver"`
-	SQLite SQLiteConfig `mapstructure:"sqlite"`
-	MySQL  MySQLConfig  `mapstructure:"mysql"`
+	Driver          string        `mapstructure:"driver"`
+	MaxOpenConns    int           `mapstructure:"max_open_conns"`
+	MaxIdleConns    int           `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+	SQLite          SQLiteConfig  `mapstructure:"sqlite"`
+	MySQL           MySQLConfig   `mapstructure:"mysql"`
 }
 
 type SQLiteConfig struct {
@@ -248,6 +257,15 @@ func applyDefaults(cfg *Config) {
 	if cfg.Database.Driver == "" {
 		cfg.Database.Driver = "sqlite"
 	}
+	if cfg.Database.MaxOpenConns <= 0 {
+		cfg.Database.MaxOpenConns = 50
+	}
+	if cfg.Database.MaxIdleConns <= 0 {
+		cfg.Database.MaxIdleConns = 10
+	}
+	if cfg.Database.ConnMaxLifetime <= 0 {
+		cfg.Database.ConnMaxLifetime = 30 * time.Minute
+	}
 	if cfg.Database.SQLite.Path == "" {
 		cfg.Database.SQLite.Path = "./data/app.db"
 	}
@@ -265,6 +283,24 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Classify.Workers <= 0 {
 		cfg.Classify.Workers = 1
+	}
+	if cfg.Redis.PoolSize <= 0 {
+		cfg.Redis.PoolSize = 50
+	}
+	if cfg.Redis.MinIdleConns < 0 {
+		cfg.Redis.MinIdleConns = 0
+	}
+	if cfg.Redis.DialTimeout <= 0 {
+		cfg.Redis.DialTimeout = 3 * time.Second
+	}
+	if cfg.Redis.ReadTimeout <= 0 {
+		cfg.Redis.ReadTimeout = 2 * time.Second
+	}
+	if cfg.Redis.WriteTimeout <= 0 {
+		cfg.Redis.WriteTimeout = 2 * time.Second
+	}
+	if cfg.Redis.PoolTimeout <= 0 {
+		cfg.Redis.PoolTimeout = 4 * time.Second
 	}
 }
 
