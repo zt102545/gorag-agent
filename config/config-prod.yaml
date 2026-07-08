@@ -1,0 +1,5 @@
+server:
+  mode: release
+
+session:
+  ttl: 72h

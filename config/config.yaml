@@ -1,0 +1,31 @@
+server:
+  port: "8080"
+  mode: debug
+
+ai:
+  chat_model:
+    provider: openai
+    base_url: ""
+    model_name: gpt-4o
+    temperature: 0.7
+    max_tokens: 2048
+  embedding:
+    provider: openai
+    base_url: ""
+    model_name: text-embedding-3-small
+    dimensions: 1536
+
+redis:
+  addr: 127.0.0.1:6379
+  password: ""
+  db: 0
+
+rag:
+  index_name: customer_service_qa
+  key_prefix: "cs_qa:"
+  vector_field: vector_content
+  top_k: 3
+  chunk_size: 512
+
+session:
+  ttl: 24h
