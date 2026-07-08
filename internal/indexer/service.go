@@ -19,12 +19,13 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/config"
 )
 
+// Legacy markdown/txt document indexer (optional path; QA uses vectorstore).
 type Service struct {
 	indexer indexer.Indexer
-	cfg     config.RAGConfig
+	cfg     config.RedisSearchStoreConfig
 }
 
-func NewService(client *redis.Client, embedder embedding.Embedder, cfg config.RAGConfig) (*Service, error) {
+func NewService(client *redis.Client, embedder embedding.Embedder, cfg config.RedisSearchStoreConfig) (*Service, error) {
 	idx, err := redisIndexer.NewIndexer(context.Background(), &redisIndexer.IndexerConfig{
 		Client:    client,
 		KeyPrefix: cfg.KeyPrefix,
@@ -116,9 +117,6 @@ func (s *Service) IndexPath(ctx context.Context, path string) ([]string, error) 
 	})
 	if err != nil {
 		return nil, err
-	}
-	if len(allDocs) == 0 {
-		return nil, fmt.Errorf("no documents found in %s", path)
 	}
 	return s.indexer.Store(ctx, allDocs)
 }

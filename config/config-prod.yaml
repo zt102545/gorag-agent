@@ -3,3 +3,8 @@ server:
 
 session:
   ttl: 72h
+
+# 生产可按实际情况覆盖：
+# 1) database.driver=mysql
+# 2) vector_store.provider=milvus 或 redissearch
+# 3) embedding / ai.chat_model 的 base_url / model_name / key 走环境变量

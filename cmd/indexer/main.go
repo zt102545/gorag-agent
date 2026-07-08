@@ -9,8 +9,10 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/yourorg/agent_customer_service/internal/db"
 	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
 	"github.com/yourorg/agent_customer_service/internal/model"
+	"github.com/yourorg/agent_customer_service/internal/vectorstore"
 	redispkg "github.com/yourorg/agent_customer_service/pkg/redis"
 )
 
@@ -31,23 +33,34 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	gdb, err := db.Open(cfg.Database)
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(gdb); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+
 	redisClient := redispkg.NewIndexerClient(cfg.Redis)
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf("connect redis: %v", err)
 	}
 	defer redisClient.Close()
 
-	embedder, err := model.NewEmbedder(ctx, cfg.AI.Embedding)
+	embedder, err := model.NewEmbedder(ctx, cfg.Embedding)
 	if err != nil {
 		log.Fatalf("create embedder: %v", err)
 	}
 
-	metaStore := qa.NewRedisMetaStore(redisClient)
-	vectorIndexer, err := qa.NewVectorIndexer(redisClient, embedder, cfg.RAG)
+	vs, err := vectorstore.New(ctx, cfg.VectorStore, redisClient)
 	if err != nil {
-		log.Fatalf("create qa indexer: %v", err)
+		log.Fatalf("create vector store: %v", err)
 	}
-	svc := qa.NewService(metaStore, vectorIndexer, redisClient, cfg.AI.Embedding.Dimensions)
+	defer vs.Close()
+
+	metaStore := qa.NewSQLMetaStore(gdb)
+	svc := qa.NewService(metaStore, vs, embedder, redisClient, cfg.Embedding.Dimensions)
 	if err := svc.EnsureIndex(ctx); err != nil {
 		log.Fatalf("ensure index: %v", err)
 	}

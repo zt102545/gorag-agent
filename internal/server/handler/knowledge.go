@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
+	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 )
 
@@ -66,9 +67,12 @@ func (h *KnowledgeHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 	result, err := h.qaService.List(c.Request.Context(), qa.ListQuery{
-		Category: c.Query("category"),
-		Page:     page,
-		Size:     size,
+		Category:       c.Query("category"),
+		ClassifyStatus: c.Query("classify_status"),
+		Tag:            c.Query("tag"),
+		Q:              c.Query("q"),
+		Page:           page,
+		Size:           size,
 	})
 	if err != nil {
 		response.InternalError(c, err.Error())
@@ -96,4 +100,64 @@ func (h *KnowledgeHandler) Import(c *gin.Context) {
 		return
 	}
 	response.OK(c, result)
+}
+
+func (h *KnowledgeHandler) Reclassify(c *gin.Context) {
+	item, err := h.qaService.Reclassify(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.NotFound(c, err.Error())
+		return
+	}
+	response.OK(c, item)
+}
+
+func (h *KnowledgeHandler) Categories(c *gin.Context) {
+	cats, err := h.qaService.ListCategories(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, cats)
+}
+
+func (h *KnowledgeHandler) Tags(c *gin.Context) {
+	tags, err := h.qaService.ListTags(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, tags)
+}
+
+type AdminSessionHandler struct {
+	store *session.SQLStore
+}
+
+func NewAdminSessionHandler(store *session.SQLStore) *AdminSessionHandler {
+	return &AdminSessionHandler{store: store}
+}
+
+func (h *AdminSessionHandler) List(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	total, items, err := h.store.List(c.Request.Context(), page, size, c.Query("status"))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"total": total, "items": items})
+}
+
+func (h *AdminSessionHandler) Get(c *gin.Context) {
+	meta, err := h.store.Get(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.NotFound(c, err.Error())
+		return
+	}
+	messages, err := h.store.GetMessages(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"session": meta, "messages": messages})
 }

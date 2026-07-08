@@ -1,31 +1,151 @@
+# =============================================================================
+# HTTP 服务
+# =============================================================================
 server:
+  # 监听端口。浏览器 / curl / GM Vite 代理访问后端用这个端口。
   port: "8080"
+  # Gin 模式：debug=详细日志；release=生产（少日志）。仅影响 HTTP 框架行为。
   mode: debug
 
+# =============================================================================
+# 对话大模型（Chat）
+# 用途：Agent 多轮对话、转人工决策、QA 异步「分类/打标」。
+# 注意：这里只负责「生成文字」，不负责把文本变成向量；向量化请看下方 embedding。
+# =============================================================================
 ai:
   chat_model:
+    # 模型厂商适配器。当前仅支持 openai（含任何 OpenAI 兼容网关）。
     provider: openai
+    # API 根地址。空=官方默认；可填代理如 https://your-proxy/v1。
+    # 改这个不会影响 embedding，除非你也给 embedding 配了同样的 base_url。
     base_url: ""
+    # 对话用模型名，例如 gpt-4o、qwen-plus（取决于你的兼容网关）。
     model_name: gpt-4o
+    # api_key 不写在 yaml（防泄露），用环境变量 OPENAI_API_KEY 注入。
+    # 采样温度：越高回答越发散；客服场景建议 0.3~0.8。
     temperature: 0.7
+    # 单次回复最大 token 上限，防止过长输出拖慢/烧钱。
     max_tokens: 2048
-  embedding:
-    provider: openai
-    base_url: ""
-    model_name: text-embedding-3-small
-    dimensions: 1536
 
+# =============================================================================
+# 向量化模型（Embedding）—— 与 chat_model 完全独立
+# 用途：把 QA 的 question（及用户查询）变成浮点向量，再写入/检索向量库。
+# 换 Chat 模型 ≠ 换 Embedding；维度变了必须重建向量索引，否则检索全错。
+# =============================================================================
+embedding:
+  # 第一期仅 openai（OpenAI 兼容 Embeddings API）。
+  provider: openai
+  # Embeddings API 根地址。可与 chat 不同（例如 chat 走 A 网关、embedding 走 B）。
+  base_url: ""
+  # 向量化模型名，如 text-embedding-3-small / text-embedding-3-large。
+  # 不同模型经济性/召回质量不同，且输出维度可能不同。
+  model_name: text-embedding-3-small
+  # api_key：环境变量 EMBEDDING_API_KEY（兼容旧名 OPENAI_EMBEDDING_API_KEY）。
+  # 可与 OPENAI_API_KEY 相同，也可单独一把「只开 Embedding」权限的 Key。
+  # 向量维度。必须与 vector_store 里索引/collection 的 dim 一致。
+  # 改 dimensions 后旧索引不可直接复用，需重建（清空旧索引再导入 QA）。
+  dimensions: 1536
+
+# =============================================================================
+# Redis 基础设施
+# 用途：
+#   1) 永远需要：QA 异步分类队列、HITL checkpoint 等。
+#   2) 仅当 vector_store.provider=redissearch 时：兼作 QA 向量库（需 Redis Stack）。
+# 即使向量切到 Milvus，这里仍要配通，否则分类 worker / 转人工会挂。
+# =============================================================================
 redis:
+  # Redis 地址 host:port。WSL/本机 Stack 一般是 127.0.0.1:6379。
   addr: 127.0.0.1:6379
+  # 访问密码；无密码留空。
   password: ""
+  # 逻辑库编号 0~15（默认实例）。向量 Hash / 队列 / checkpoint 都用这个 DB。
   db: 0
 
-rag:
-  index_name: customer_service_qa
-  key_prefix: "cs_qa:"
-  vector_field: vector_content
+# =============================================================================
+# 向量库（Vector Store）
+# 用途：存 QA 的向量 + 检索用字段，供「知识库检索 / 测试客服 RAG」召回相似问答。
+# 业务正文权威源仍在 SQL（qa_items）；这里只存检索副本与 embedding。
+# 切换 provider 需重启服务；两套索引不会自动互相同步，换库后请重新导入/重建。
+# =============================================================================
+vector_store:
+  # 后端类型：
+  #   redissearch — 用上面的 redis + RediSearch（本地轻量默认）
+  #   milvus      — 专用向量库（自建 Milvus 或 Zilliz Cloud）
+  provider: redissearch
+  # 每次用户提问检索返回的最相似 QA 条数。越大=上下文更长、更慢/更贵。
   top_k: 3
-  chunk_size: 512
 
+  # --- 仅 provider=redissearch 时生效；需要 Redis Stack / 带 RediSearch 的发行版 ---
+  redissearch:
+    # RediSearch 索引名（FT.CREATE / FT.SEARCH）。同一 Redis 上勿与其它业务撞名。
+    index_name: customer_service_qa
+    # 每条 QA 向量文档的 Key 前缀，最终 Key = key_prefix + qa_id，例如 cs_qa:uuid。
+    key_prefix: "cs_qa:"
+    # Hash 里存放 FLOAT32 向量的字段名；建索引时声明为 VECTOR 类型。
+    vector_field: vector_content
+
+  # --- 仅 provider=milvus 时生效 ---
+  milvus:
+    # 自建 Milvus gRPC 地址，常见 localhost:19530。
+    # 若同时填了 uri（云），实现侧优先用 uri+token，address 可留空。
+    address: "localhost:19530"
+    # 云端 HTTP/HTTPS 入口，例如 Zilliz。本地自建一般留空，改用 address。
+    uri: ""
+    # 云端 API Token。建议用环境变量 MILVUS_TOKEN 注入。
+    token: ""
+    # 自建开启鉴权时的用户名/密码；未开鉴权留空。
+    username: ""
+    password: ""
+    # Milvus database 名（多库隔离）；默认 default。
+    database: default
+    # Collection 名（类似表名），存 QA 向量与标量字段。
+    # 换 embedding.dimensions / metric_type 后应换新 collection 或删旧再建。
+    collection: customer_service_qa
+    # 距离度量，必须与建索引一致：COSINE（默认）| L2 | IP
+    metric_type: COSINE
+
+# =============================================================================
+# 会话 / HITL
+# =============================================================================
 session:
+  # HITL checkpoint 在 Redis 上的过期时间；对话消息本身已永久落 SQL，不受此 TTL 删除。
   ttl: 24h
+
+# =============================================================================
+# 业务库（SQLite / MySQL 可切换）
+# 存：用户、API Key、QA 元数据、Provider/提示词、sessions、messages。
+# 与向量库无关；向量在 vector_store，不进本库。
+# =============================================================================
+database:
+  # sqlite | mysql。本地默认 sqlite；生产可切 mysql。
+  driver: sqlite
+  sqlite:
+    # SQLite 文件路径；目录不存在时会自动创建。
+    path: ./data/app.db
+  mysql:
+    # MySQL DSN。仅 driver=mysql 时使用。
+    dsn: "root:password@tcp(127.0.0.1:3306)/agent_cs?parseTime=true&charset=utf8mb4&loc=Local"
+
+# =============================================================================
+# GM 管理端 JWT
+# =============================================================================
+jwt:
+  # 签名密钥，务必用环境变量 JWT_SECRET 覆盖，勿用默认值上生产。
+  secret: "dev-change-me-jwt-secret"
+  # Access Token 有效期。
+  expire: 24h
+
+# =============================================================================
+# 种子管理员（仅当库中尚无任何用户时创建）
+# =============================================================================
+admin:
+  # 可用环境变量 ADMIN_USERNAME / ADMIN_PASSWORD 覆盖。
+  username: admin
+  password: admin123
+
+# =============================================================================
+# QA 异步分类 Worker
+# =============================================================================
+classify:
+  # 同时处理分类队列的协程数。
+  workers: 1

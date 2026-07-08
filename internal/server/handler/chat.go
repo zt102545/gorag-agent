@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 	"github.com/gin-gonic/gin"
 
+	"github.com/yourorg/agent_customer_service/internal/graph/rag"
 	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 	"github.com/yourorg/agent_customer_service/pkg/sse"
@@ -16,13 +18,15 @@ type ChatHandler struct {
 	runner       *adk.Runner
 	sessionStore session.Store
 	sseWriter    *sse.Writer
+	intent       *rag.IntentAnalyzer
 }
 
-func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *sse.Writer) *ChatHandler {
+func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *sse.Writer, intent *rag.IntentAnalyzer) *ChatHandler {
 	return &ChatHandler{
 		runner:       runner,
 		sessionStore: sessionStore,
 		sseWriter:    sseWriter,
+		intent:       intent,
 	}
 }
 
@@ -50,7 +54,15 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	}
 
 	userMsg := schema.UserMessage(req.Message)
-	messages := append(history, userMsg)
+	messages := history
+	if h.intent != nil {
+		if res, err := h.intent.Analyze(c.Request.Context(), req.Message); err == nil && res != nil {
+			hint := fmt.Sprintf("意图分析结果：intent=%s need_search=%t confidence=%.2f reason=%s。请根据 need_search 决定是否调用 knowledge_search；need_search=false 时不要调用。",
+				res.Intent, res.NeedSearch, res.Confidence, res.Reason)
+			messages = append(messages, schema.SystemMessage(hint))
+		}
+	}
+	messages = append(messages, userMsg)
 	if err := h.sessionStore.AppendMessages(c.Request.Context(), sessionID, userMsg); err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -64,14 +76,19 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	iter := h.runner.Run(c.Request.Context(), messages, adk.WithCheckPointID(sessionID))
 
 	var assistantContent strings.Builder
+	var assistantToolCalls []schema.ToolCall
 	for {
 		event, ok := iter.Next()
 		if !ok {
 			break
 		}
 		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Message != nil {
-			if event.Output.MessageOutput.Message.Role == schema.Assistant {
-				assistantContent.WriteString(event.Output.MessageOutput.Message.Content)
+			msg := event.Output.MessageOutput.Message
+			if msg.Role == schema.Assistant {
+				assistantContent.WriteString(msg.Content)
+				if len(msg.ToolCalls) > 0 {
+					assistantToolCalls = append(assistantToolCalls, msg.ToolCalls...)
+				}
 			}
 		}
 		if err := h.sseWriter.Write(c.Writer, event); err != nil {
@@ -80,7 +97,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
-	if content := strings.TrimSpace(assistantContent.String()); content != "" {
-		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, schema.AssistantMessage(content, nil))
+	content := strings.TrimSpace(assistantContent.String())
+	if content != "" || len(assistantToolCalls) > 0 {
+		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, schema.AssistantMessage(content, assistantToolCalls))
 	}
 }

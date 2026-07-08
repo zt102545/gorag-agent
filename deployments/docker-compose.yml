@@ -1,4 +1,6 @@
 services:
+  # Redis Stack：当 vector_store.provider=redissearch 时，兼作向量库；
+  # 无论向量库选什么，都承担分类队列与 HITL checkpoint。
   redis:
     image: redis/redis-stack-server:latest
     ports:
@@ -6,5 +8,64 @@ services:
     volumes:
       - redis_data:/data
 
+  # 可选 MySQL：当 database.driver=mysql 时启用
+  mysql:
+    image: mysql:8.0
+    profiles: ["mysql"]
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: agent_cs
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4
+
+  # 可选 Milvus：当 vector_store.provider=milvus 时启用
+  # 这里使用官方 standalone 组合（etcd + minio + milvus）
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    profiles: ["milvus"]
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    volumes:
+      - etcd_data:/etcd
+
+  minio:
+    image: minio/minio:RELEASE.2024-07-16T23-46-41Z
+    profiles: ["milvus"]
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data
+    ports:
+      - "9000:9000"
+    volumes:
+      - minio_data:/minio_data
+
+  milvus:
+    image: milvusdb/milvus:v2.4.8
+    profiles: ["milvus"]
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    depends_on:
+      - etcd
+      - minio
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+
 volumes:
   redis_data:
+  mysql_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

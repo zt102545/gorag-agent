@@ -1,5 +1,20 @@
 server:
   mode: debug
 
+# 本地默认连本机 / WSL Redis Stack
 redis:
   addr: 127.0.0.1:6379
+
+# 本地默认用 SQLite
+database:
+  driver: sqlite
+  sqlite:
+    path: ./data/app.db
+
+# 本地默认走 RedisSearch 做向量检索
+vector_store:
+  provider: redissearch
+  redissearch:
+    index_name: customer_service_qa
+    key_prefix: "cs_qa:"
+    vector_field: vector_content

@@ -29,3 +29,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Local database
+data/*.db
+data/*.db-*

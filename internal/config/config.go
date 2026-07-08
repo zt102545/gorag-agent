@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -9,11 +11,27 @@ import (
 )
 
 type Config struct {
-	Server  ServerConfig  `mapstructure:"server"`
-	AI      AIConfig      `mapstructure:"ai"`
-	Redis   RedisConfig   `mapstructure:"redis"`
-	RAG     RAGConfig     `mapstructure:"rag"`
-	Session SessionConfig `mapstructure:"session"`
+	Server      ServerConfig      `mapstructure:"server"`
+	AI          AIConfig          `mapstructure:"ai"`
+	Embedding   EmbeddingConfig   `mapstructure:"embedding"`
+	Redis       RedisConfig       `mapstructure:"redis"`
+	VectorStore VectorStoreConfig `mapstructure:"vector_store"`
+	Session     SessionConfig     `mapstructure:"session"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	JWT         JWTConfig         `mapstructure:"jwt"`
+	Admin       AdminConfig       `mapstructure:"admin"`
+	Classify    ClassifyConfig    `mapstructure:"classify"`
+
+	// Legacy rag section for one-shot migration.
+	LegacyRAG legacyRAGConfig `mapstructure:"rag"`
+}
+
+type legacyRAGConfig struct {
+	IndexName   string `mapstructure:"index_name"`
+	KeyPrefix   string `mapstructure:"key_prefix"`
+	VectorField string `mapstructure:"vector_field"`
+	TopK        int    `mapstructure:"top_k"`
+	ChunkSize   int    `mapstructure:"chunk_size"`
 }
 
 type ServerConfig struct {
@@ -23,6 +41,7 @@ type ServerConfig struct {
 
 type AIConfig struct {
 	ChatModel ChatModelConfig `mapstructure:"chat_model"`
+	// Deprecated: prefer top-level embedding. Kept for legacy YAML.
 	Embedding EmbeddingConfig `mapstructure:"embedding"`
 }
 
@@ -49,16 +68,60 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
-type RAGConfig struct {
+type VectorStoreConfig struct {
+	Provider    string                 `mapstructure:"provider"`
+	TopK        int                    `mapstructure:"top_k"`
+	RedisSearch RedisSearchStoreConfig `mapstructure:"redissearch"`
+	Milvus      MilvusStoreConfig      `mapstructure:"milvus"`
+}
+
+type RedisSearchStoreConfig struct {
 	IndexName   string `mapstructure:"index_name"`
 	KeyPrefix   string `mapstructure:"key_prefix"`
 	VectorField string `mapstructure:"vector_field"`
-	TopK        int    `mapstructure:"top_k"`
-	ChunkSize   int    `mapstructure:"chunk_size"`
+}
+
+type MilvusStoreConfig struct {
+	Address    string `mapstructure:"address"`
+	URI        string `mapstructure:"uri"`
+	Token      string `mapstructure:"token"`
+	Username   string `mapstructure:"username"`
+	Password   string `mapstructure:"password"`
+	Database   string `mapstructure:"database"`
+	Collection string `mapstructure:"collection"`
+	MetricType string `mapstructure:"metric_type"`
 }
 
 type SessionConfig struct {
 	TTL time.Duration `mapstructure:"ttl"`
+}
+
+type DatabaseConfig struct {
+	Driver string       `mapstructure:"driver"`
+	SQLite SQLiteConfig `mapstructure:"sqlite"`
+	MySQL  MySQLConfig  `mapstructure:"mysql"`
+}
+
+type SQLiteConfig struct {
+	Path string `mapstructure:"path"`
+}
+
+type MySQLConfig struct {
+	DSN string `mapstructure:"dsn"`
+}
+
+type JWTConfig struct {
+	Secret string        `mapstructure:"secret"`
+	Expire time.Duration `mapstructure:"expire"`
+}
+
+type AdminConfig struct {
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+}
+
+type ClassifyConfig struct {
+	Workers int `mapstructure:"workers"`
 }
 
 func Load(env string) (*Config, error) {
@@ -83,36 +146,126 @@ func Load(env string) (*Config, error) {
 	v.AutomaticEnv()
 
 	_ = v.BindEnv("ai.chat_model.api_key", "OPENAI_API_KEY")
-	_ = v.BindEnv("ai.embedding.api_key", "OPENAI_EMBEDDING_API_KEY")
+	_ = v.BindEnv("embedding.api_key", "EMBEDDING_API_KEY")
+	_ = v.BindEnv("database.driver", "DATABASE_DRIVER")
+	_ = v.BindEnv("database.mysql.dsn", "DATABASE_MYSQL_DSN")
+	_ = v.BindEnv("database.sqlite.path", "DATABASE_SQLITE_PATH")
+	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
+	_ = v.BindEnv("admin.username", "ADMIN_USERNAME")
+	_ = v.BindEnv("admin.password", "ADMIN_PASSWORD")
+	_ = v.BindEnv("vector_store.provider", "VECTOR_STORE_PROVIDER")
+	_ = v.BindEnv("vector_store.milvus.address", "MILVUS_ADDRESS")
+	_ = v.BindEnv("vector_store.milvus.uri", "MILVUS_URI")
+	_ = v.BindEnv("vector_store.milvus.token", "MILVUS_TOKEN")
+	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
+	_ = v.BindEnv("redis.password", "REDIS_PASSWORD")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	applyLegacyMapping(&cfg)
+	applyDefaults(&cfg)
+
+	return &cfg, nil
+}
+
+func applyLegacyMapping(cfg *Config) {
+	if cfg.Embedding.ModelName == "" && cfg.Embedding.Provider == "" && cfg.Embedding.APIKey == "" {
+		if cfg.AI.Embedding.ModelName != "" || cfg.AI.Embedding.Provider != "" || cfg.AI.Embedding.APIKey != "" {
+			log.Printf("[config] migrating ai.embedding → top-level embedding")
+			cfg.Embedding = cfg.AI.Embedding
+		}
+	}
+	if cfg.Embedding.APIKey == "" {
+		if key := os.Getenv("OPENAI_EMBEDDING_API_KEY"); key != "" {
+			cfg.Embedding.APIKey = key
+		}
+	}
+
+	if cfg.VectorStore.Provider == "" && (cfg.LegacyRAG.IndexName != "" || cfg.LegacyRAG.KeyPrefix != "" || cfg.LegacyRAG.TopK > 0) {
+		log.Printf("[config] migrating rag → vector_store (provider=redissearch)")
+		cfg.VectorStore.Provider = "redissearch"
+		if cfg.VectorStore.TopK == 0 {
+			cfg.VectorStore.TopK = cfg.LegacyRAG.TopK
+		}
+		if cfg.VectorStore.RedisSearch.IndexName == "" {
+			cfg.VectorStore.RedisSearch.IndexName = cfg.LegacyRAG.IndexName
+		}
+		if cfg.VectorStore.RedisSearch.KeyPrefix == "" {
+			cfg.VectorStore.RedisSearch.KeyPrefix = cfg.LegacyRAG.KeyPrefix
+		}
+		if cfg.VectorStore.RedisSearch.VectorField == "" {
+			cfg.VectorStore.RedisSearch.VectorField = cfg.LegacyRAG.VectorField
+		}
+	}
+}
+
+func applyDefaults(cfg *Config) {
 	if cfg.Server.Port == "" {
 		cfg.Server.Port = "8080"
 	}
 	if cfg.Session.TTL == 0 {
 		cfg.Session.TTL = 24 * time.Hour
 	}
-	if cfg.RAG.TopK == 0 {
-		cfg.RAG.TopK = 3
+	if cfg.Embedding.Provider == "" {
+		cfg.Embedding.Provider = "openai"
 	}
-	if cfg.RAG.KeyPrefix == "" {
-		cfg.RAG.KeyPrefix = "cs_qa:"
+	if cfg.Embedding.ModelName == "" {
+		cfg.Embedding.ModelName = "text-embedding-3-small"
 	}
-	if cfg.RAG.VectorField == "" {
-		cfg.RAG.VectorField = "vector_content"
+	if cfg.Embedding.Dimensions == 0 {
+		cfg.Embedding.Dimensions = 1536
 	}
-	if cfg.RAG.IndexName == "" {
-		cfg.RAG.IndexName = "customer_service_qa"
+	if cfg.VectorStore.Provider == "" {
+		cfg.VectorStore.Provider = "redissearch"
 	}
-	if cfg.AI.Embedding.Dimensions == 0 {
-		cfg.AI.Embedding.Dimensions = 1536
+	if cfg.VectorStore.TopK == 0 {
+		cfg.VectorStore.TopK = 3
 	}
-
-	return &cfg, nil
+	if cfg.VectorStore.RedisSearch.IndexName == "" {
+		cfg.VectorStore.RedisSearch.IndexName = "customer_service_qa"
+	}
+	if cfg.VectorStore.RedisSearch.KeyPrefix == "" {
+		cfg.VectorStore.RedisSearch.KeyPrefix = "cs_qa:"
+	}
+	if cfg.VectorStore.RedisSearch.VectorField == "" {
+		cfg.VectorStore.RedisSearch.VectorField = "vector_content"
+	}
+	if cfg.VectorStore.Milvus.Address == "" && cfg.VectorStore.Milvus.URI == "" {
+		cfg.VectorStore.Milvus.Address = "localhost:19530"
+	}
+	if cfg.VectorStore.Milvus.Database == "" {
+		cfg.VectorStore.Milvus.Database = "default"
+	}
+	if cfg.VectorStore.Milvus.Collection == "" {
+		cfg.VectorStore.Milvus.Collection = "customer_service_qa"
+	}
+	if cfg.VectorStore.Milvus.MetricType == "" {
+		cfg.VectorStore.Milvus.MetricType = "COSINE"
+	}
+	if cfg.Database.Driver == "" {
+		cfg.Database.Driver = "sqlite"
+	}
+	if cfg.Database.SQLite.Path == "" {
+		cfg.Database.SQLite.Path = "./data/app.db"
+	}
+	if cfg.JWT.Secret == "" {
+		cfg.JWT.Secret = "dev-change-me-jwt-secret"
+	}
+	if cfg.JWT.Expire == 0 {
+		cfg.JWT.Expire = 24 * time.Hour
+	}
+	if cfg.Admin.Username == "" {
+		cfg.Admin.Username = "admin"
+	}
+	if cfg.Admin.Password == "" {
+		cfg.Admin.Password = "admin123"
+	}
+	if cfg.Classify.Workers <= 0 {
+		cfg.Classify.Workers = 1
+	}
 }
 
 func MustLoad(env string) *Config {

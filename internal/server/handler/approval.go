@@ -2,7 +2,9 @@ package handler
 
 import (
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
 	"github.com/gin-gonic/gin"
+	"strings"
 
 	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
@@ -56,14 +58,30 @@ func (h *ApprovalHandler) Approve(c *gin.Context) {
 		return
 	}
 
+	var assistantContent strings.Builder
+	var assistantToolCalls []schema.ToolCall
 	for {
 		event, ok := iter.Next()
 		if !ok {
 			break
 		}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Message != nil {
+			msg := event.Output.MessageOutput.Message
+			if msg.Role == schema.Assistant {
+				assistantContent.WriteString(msg.Content)
+				if len(msg.ToolCalls) > 0 {
+					assistantToolCalls = append(assistantToolCalls, msg.ToolCalls...)
+				}
+			}
+		}
 		if err := h.sseWriter.Write(c.Writer, event); err != nil {
 			break
 		}
 		c.Writer.Flush()
+	}
+
+	content := strings.TrimSpace(assistantContent.String())
+	if content != "" || len(assistantToolCalls) > 0 {
+		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, schema.AssistantMessage(content, assistantToolCalls))
 	}
 }

@@ -13,7 +13,10 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
 )
 
-func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingChatModel, ragService *rag.Service) (adk.Agent, error) {
+func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingChatModel, ragService *rag.Service, instruction string) (adk.Agent, error) {
+	if instruction == "" {
+		instruction = CustomerServiceInstruction
+	}
 	ragTool, err := agenttools.NewRAGSearchTool(ragService)
 	if err != nil {
 		return nil, fmt.Errorf("create rag tool: %w", err)
@@ -26,7 +29,7 @@ func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingCha
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "CustomerServiceAgent",
 		Description: "智能客服助手，可检索知识库并在必要时转人工",
-		Instruction: CustomerServiceInstruction,
+		Instruction: instruction,
 		Model:       chatModel,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{

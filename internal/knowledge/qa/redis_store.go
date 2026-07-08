@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -28,9 +29,17 @@ func (s *RedisMetaStore) Save(ctx context.Context, item *Item) error {
 	if err != nil {
 		return err
 	}
+	var previous *Item
+	previous, err = s.Get(ctx, item.ID)
+	if err != nil && !strings.Contains(err.Error(), "qa not found:") {
+		return err
+	}
 	pipe := s.client.Pipeline()
 	pipe.Set(ctx, metaKey(item.ID), payload, 0)
 	pipe.SAdd(ctx, allIDsKey, item.ID)
+	if previous != nil && previous.Category != "" && previous.Category != item.Category {
+		pipe.SRem(ctx, categoryKey(previous.Category), item.ID)
+	}
 	if item.Category != "" {
 		pipe.SAdd(ctx, categoryKey(item.Category), item.ID)
 	}
@@ -69,10 +78,81 @@ func (s *RedisMetaStore) Delete(ctx context.Context, id string) error {
 }
 
 func (s *RedisMetaStore) List(ctx context.Context, query ListQuery) (*ListResult, error) {
-	if query.Category != "" {
-		return s.ListByCategory(ctx, query.Category, query.Page, query.Size)
+	if query.Page <= 0 {
+		query.Page = 1
 	}
-	return s.listAll(ctx, query.Page, query.Size)
+	if query.Size <= 0 {
+		query.Size = 20
+	}
+	ids, err := s.idsForQuery(ctx, query.Category)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]Item, 0, len(ids))
+	for _, id := range ids {
+		item, err := s.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		if !matchesQuery(item, query) {
+			continue
+		}
+		items = append(items, *item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ID > items[j].ID
+		}
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	total := int64(len(items))
+	start := (query.Page - 1) * query.Size
+	if start >= len(items) {
+		return &ListResult{Total: total, Items: []Item{}}, nil
+	}
+	end := start + query.Size
+	if end > len(items) {
+		end = len(items)
+	}
+	return &ListResult{Total: total, Items: items[start:end]}, nil
+}
+
+func (s *RedisMetaStore) ListCategories(ctx context.Context) ([]string, error) {
+	keys, err := s.client.Keys(ctx, categoryKeyPrefix+"*").Result()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, strings.TrimPrefix(k, categoryKeyPrefix))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func (s *RedisMetaStore) ListTags(ctx context.Context) ([]string, error) {
+	ids, err := s.client.SMembers(ctx, allIDsKey).Result()
+	if err != nil {
+		return nil, err
+	}
+	set := map[string]struct{}{}
+	for _, id := range ids {
+		item, err := s.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		for _, t := range item.Tags {
+			if t != "" {
+				set[t] = struct{}{}
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for t := range set {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s *RedisMetaStore) listAll(ctx context.Context, page, size int) (*ListResult, error) {
@@ -91,6 +171,13 @@ func (s *RedisMetaStore) ListByCategory(ctx context.Context, category string, pa
 	}
 	sort.Strings(ids)
 	return s.paginateItems(ctx, ids, page, size)
+}
+
+func (s *RedisMetaStore) idsForQuery(ctx context.Context, category string) ([]string, error) {
+	if category != "" {
+		return s.client.SMembers(ctx, categoryKey(category)).Result()
+	}
+	return s.client.SMembers(ctx, allIDsKey).Result()
 }
 
 func (s *RedisMetaStore) paginateItems(ctx context.Context, ids []string, page, size int) (*ListResult, error) {
@@ -140,4 +227,37 @@ func metaKey(id string) string {
 
 func categoryKey(category string) string {
 	return categoryKeyPrefix + category
+}
+
+func matchesQuery(item *Item, query ListQuery) bool {
+	if item == nil {
+		return false
+	}
+	if query.ClassifyStatus != "" && item.ClassifyStatus != query.ClassifyStatus {
+		return false
+	}
+	if query.Tag != "" {
+		found := false
+		for _, tag := range item.Tags {
+			if strings.EqualFold(strings.TrimSpace(tag), strings.TrimSpace(query.Tag)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	if query.Q != "" {
+		q := strings.ToLower(strings.TrimSpace(query.Q))
+		if q == "" {
+			return true
+		}
+		question := strings.ToLower(item.Question)
+		answer := strings.ToLower(item.Answer)
+		if !strings.Contains(question, q) && !strings.Contains(answer, q) {
+			return false
+		}
+	}
+	return true
 }
