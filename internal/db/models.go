@@ -80,20 +80,6 @@ type AdminUser struct {
 
 func (AdminUser) TableName() string { return "admin_users" }
 
-type BizAPIKey struct {
-	ID         string     `gorm:"primaryKey;size:36" json:"id"`
-	Name       string     `gorm:"size:128;not null" json:"name"`
-	KeyHash    string     `gorm:"size:255;not null;index" json:"-"`
-	Prefix     string     `gorm:"size:16;not null" json:"prefix"`
-	Enabled    bool       `gorm:"not null;default:true" json:"enabled"`
-	Remark     string     `gorm:"size:255" json:"remark"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
-}
-
-func (BizAPIKey) TableName() string { return "biz_api_keys" }
-
 type CallerToken struct {
 	ID         string     `gorm:"primaryKey;size:36" json:"id"`
 	Name       string     `gorm:"size:128;not null" json:"name"`
@@ -214,7 +200,6 @@ type Session struct {
 	ChannelID      string     `gorm:"size:128;index" json:"channel_id,omitempty"`
 	TenantID       string     `gorm:"size:128;index" json:"tenant_id,omitempty"`
 	CallerTokenID  string     `gorm:"size:36;index" json:"caller_token_id,omitempty"`
-	APIKeyID       string     `gorm:"size:36;index" json:"api_key_id,omitempty"`
 	Status         string     `gorm:"size:32;not null;index;default:active" json:"status"`
 	Meta           JSONMap    `gorm:"type:text" json:"meta,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`

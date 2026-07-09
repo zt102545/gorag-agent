@@ -7,12 +7,14 @@
 
     <el-table :data="profiles">
       <el-table-column prop="name" label="名称" min-width="180" />
-      <el-table-column label="状态" width="100">
+      <el-table-column label="状态" width="110">
         <template #default="{ row }">
-          <el-tag :type="row.active ? 'success' : 'info'">{{ row.active ? '当前启用' : '未启用' }}</el-tag>
+          <el-tag :type="row.active ? 'success' : 'info'">
+            {{ row.active ? '当前启用' : '未启用' }}
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="provider" label="Provider" width="120" />
+      <el-table-column prop="provider" label="Provider" width="140" />
       <el-table-column prop="model_name" label="Model" min-width="180" />
       <el-table-column prop="updated_at" label="更新时间" width="180" />
       <el-table-column label="操作" width="260" fixed="right">
@@ -27,16 +29,23 @@
     <el-dialog v-model="dialog" :title="editing?.id ? '编辑模型配置' : '新增模型配置'" width="640px">
       <el-form label-width="120px">
         <el-form-item label="名称">
-          <el-input v-model="form.name" placeholder="例如：默认 Chat / 备用 Embedding" />
+          <el-input v-model="form.name" placeholder="例如：默认 Chat / 火山 Embedding" />
         </el-form-item>
         <el-form-item label="Provider">
-          <el-input v-model="form.provider" placeholder="openai" />
+          <el-select v-model="form.provider" @change="onProviderChange">
+            <el-option
+              v-for="item in providerOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="Base URL">
-          <el-input v-model="form.base_url" placeholder="可选，兼容代理地址" />
+          <el-input v-model="form.base_url" :placeholder="baseURLPlaceholder" />
         </el-form-item>
         <el-form-item label="Model">
-          <el-input v-model="form.model_name" />
+          <el-input v-model="form.model_name" :placeholder="modelPlaceholder" />
         </el-form-item>
         <el-form-item label="API Key">
           <el-input v-model="form.api_key" type="password" show-password :placeholder="maskHint" />
@@ -83,6 +92,29 @@ const form = reactive({
 })
 
 const maskHint = computed(() => (masked.value ? `当前: ${masked.value}（留空不修改）` : '未配置'))
+const isArkProvider = computed(() => form.provider === 'ark' || form.provider === 'ark_multimodal')
+const providerOptions = computed(() => {
+  if (props.kind === 'embedding') {
+    return [
+      { label: 'OpenAI / 兼容接口', value: 'openai' },
+      { label: '火山方舟 Ark（文本向量）', value: 'ark' },
+      { label: '火山方舟 Ark（多模态向量）', value: 'ark_multimodal' },
+    ]
+  }
+  return [{ label: 'OpenAI / 兼容接口', value: 'openai' }]
+})
+const baseURLPlaceholder = computed(() => {
+  if (props.kind === 'embedding' && isArkProvider.value) {
+    return '默认：https://ark.cn-beijing.volces.com/api/v3'
+  }
+  return '可选，兼容代理地址'
+})
+const modelPlaceholder = computed(() => {
+  if (props.kind === 'embedding' && isArkProvider.value) {
+    return '火山方舟模型 ID 或 Endpoint ID'
+  }
+  return ''
+})
 
 async function load() {
   loading.value = true
@@ -128,6 +160,17 @@ function openEdit(row: api.ProviderProfile) {
   })
   masked.value = row.api_key_masked || ''
   dialog.value = true
+}
+
+function onProviderChange() {
+  if (props.kind !== 'embedding') return
+  if (isArkProvider.value) {
+    if (!form.base_url) form.base_url = 'https://ark.cn-beijing.volces.com/api/v3'
+    if (!form.dimensions || form.dimensions === 1536) form.dimensions = 2048
+  } else if (form.provider === 'openai') {
+    if (form.base_url === 'https://ark.cn-beijing.volces.com/api/v3') form.base_url = ''
+    if (!form.dimensions || form.dimensions === 2048) form.dimensions = 1536
+  }
 }
 
 async function save() {

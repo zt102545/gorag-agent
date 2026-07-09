@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
+	arkEmbedding "github.com/cloudwego/eino-ext/components/embedding/ark"
 	openaiEmbedding "github.com/cloudwego/eino-ext/components/embedding/openai"
 	openaiModel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/embedding"
@@ -23,8 +25,8 @@ func NewChatModel(ctx context.Context, cfg config.ChatModelConfig) (model.ToolCa
 	if cfg.Provider == "" || cfg.ModelName == "" {
 		return &unconfiguredChatModel{err: ErrChatModelNotConfigured}, nil
 	}
-	switch cfg.Provider {
-	case "openai":
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
+	case "openai", "openai_compatible", "openai-compatible", "compatible", "longcat":
 		temp := cfg.Temperature
 		var maxTokens *int
 		if cfg.MaxTokens > 0 {
@@ -46,7 +48,7 @@ func NewEmbedder(ctx context.Context, cfg config.EmbeddingConfig) (embedding.Emb
 	if cfg.Provider == "" || cfg.ModelName == "" {
 		return &unconfiguredEmbedder{err: ErrEmbeddingNotConfigured}, nil
 	}
-	switch cfg.Provider {
+	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
 	case "openai":
 		var dims *int
 		if cfg.Dimensions > 0 {
@@ -56,6 +58,30 @@ func NewEmbedder(ctx context.Context, cfg config.EmbeddingConfig) (embedding.Emb
 			BaseURL:    cfg.BaseURL,
 			APIKey:     cfg.APIKey,
 			Model:      cfg.ModelName,
+			Dimensions: dims,
+		})
+	case "ark", "volc", "volcengine", "火山", "火山方舟":
+		var dims *int
+		if cfg.Dimensions > 0 {
+			dims = &cfg.Dimensions
+		}
+		return arkEmbedding.NewEmbedder(ctx, &arkEmbedding.EmbeddingConfig{
+			BaseURL:    cfg.BaseURL,
+			APIKey:     cfg.APIKey,
+			Model:      cfg.ModelName,
+			Dimensions: dims,
+		})
+	case "ark_multimodal", "ark-multimodal", "volc_multimodal", "volcengine_multimodal", "火山多模态", "火山方舟多模态":
+		var dims *int
+		if cfg.Dimensions > 0 {
+			dims = &cfg.Dimensions
+		}
+		apiType := arkEmbedding.APITypeMultiModal
+		return arkEmbedding.NewEmbedder(ctx, &arkEmbedding.EmbeddingConfig{
+			BaseURL:    cfg.BaseURL,
+			APIKey:     cfg.APIKey,
+			Model:      cfg.ModelName,
+			APIType:    &apiType,
 			Dimensions: dims,
 		})
 	default:

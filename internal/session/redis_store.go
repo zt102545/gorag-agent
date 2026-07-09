@@ -38,7 +38,6 @@ func (s *RedisStore) Create(ctx context.Context, params CreateParams) (*Meta, er
 		ChannelID:      params.ChannelID,
 		TenantID:       params.TenantID,
 		CallerTokenID:  params.CallerTokenID,
-		APIKeyID:       params.APIKeyID,
 		Meta:           params.Meta,
 		CreatedAt:      now,
 		UpdatedAt:      now,

@@ -14,7 +14,6 @@ type Meta struct {
 	ChannelID      string         `json:"channel_id,omitempty"`
 	TenantID       string         `json:"tenant_id,omitempty"`
 	CallerTokenID  string         `json:"caller_token_id,omitempty"`
-	APIKeyID       string         `json:"api_key_id,omitempty"`
 	Status         string         `json:"status,omitempty"`
 	Meta           map[string]any `json:"meta,omitempty"`
 	CreatedAt      time.Time      `json:"created_at"`
@@ -27,7 +26,6 @@ type CreateParams struct {
 	ChannelID      string         `json:"channel_id,omitempty"`
 	TenantID       string         `json:"tenant_id,omitempty"`
 	CallerTokenID  string         `json:"caller_token_id,omitempty"`
-	APIKeyID       string         `json:"api_key_id,omitempty"`
 	Meta           map[string]any `json:"meta,omitempty"`
 }
 
@@ -39,7 +37,6 @@ type ListQuery struct {
 	ChannelID      string
 	TenantID       string
 	CallerTokenID  string
-	APIKeyID       string
 	CreatedFrom    *time.Time
 	CreatedTo      *time.Time
 	Page           int

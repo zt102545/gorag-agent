@@ -63,6 +63,9 @@ func NewMilvusStore(ctx context.Context, cfg config.MilvusStoreConfig) (*MilvusS
 }
 
 func (s *MilvusStore) Ensure(ctx context.Context, dim int) error {
+	if dim <= 0 {
+		return fmt.Errorf("embedding dimensions must be configured before creating milvus collection")
+	}
 	s.dim = dim
 	exists, err := s.client.HasCollection(ctx, s.collection)
 	if err != nil {

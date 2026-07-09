@@ -17,7 +17,6 @@ type Deps struct {
 	KnowledgeHandler    *handler.KnowledgeHandler
 	AuthHandler         *handler.AuthHandler
 	UserHandler         *handler.UserHandler
-	APIKeyHandler       *handler.APIKeyHandler
 	CallerTokenHandler  *handler.CallerTokenHandler
 	SettingsHandler     *handler.SettingsHandler
 	AdminSessionHandler *handler.AdminSessionHandler
@@ -104,11 +103,6 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 				adminOnly.POST("/users", deps.UserHandler.Create)
 				adminOnly.PUT("/users/:id", deps.UserHandler.Update)
 				adminOnly.DELETE("/users/:id", deps.UserHandler.Delete)
-
-				adminOnly.GET("/api-keys", deps.APIKeyHandler.List)
-				adminOnly.POST("/api-keys", deps.APIKeyHandler.Create)
-				adminOnly.PUT("/api-keys/:id", deps.APIKeyHandler.SetEnabled)
-				adminOnly.DELETE("/api-keys/:id", deps.APIKeyHandler.Delete)
 
 				adminOnly.GET("/ai-errors", deps.AIErrorHandler.List)
 				adminOnly.GET("/ai-errors/unresolved-count", deps.AIErrorHandler.UnresolvedCount)

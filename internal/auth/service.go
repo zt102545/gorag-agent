@@ -220,9 +220,7 @@ func RoleAtLeast(role, min string) bool {
 	return rank[role] >= rank[min]
 }
 
-// --- API Keys ---
-
-func HashAPIKey(raw string) string {
+func HashSecret(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
@@ -233,57 +231,6 @@ func generateSecret(prefix string, size int) (string, error) {
 		return "", err
 	}
 	return prefix + hex.EncodeToString(rawBytes), nil
-}
-
-func (s *Service) CreateAPIKey(ctx context.Context, name, remark string) (plain string, row *db.BizAPIKey, err error) {
-	plain, err = generateSecret("cs_", 24)
-	if err != nil {
-		return "", nil, err
-	}
-	row = &db.BizAPIKey{
-		ID:        uuid.NewString(),
-		Name:      name,
-		KeyHash:   HashAPIKey(plain),
-		Prefix:    plain[:8],
-		Enabled:   true,
-		Remark:    remark,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
-		return "", nil, err
-	}
-	return plain, row, nil
-}
-
-func (s *Service) ListAPIKeys(ctx context.Context) ([]db.BizAPIKey, error) {
-	var rows []db.BizAPIKey
-	err := s.db.WithContext(ctx).Order("created_at desc").Find(&rows).Error
-	return rows, err
-}
-
-func (s *Service) SetAPIKeyEnabled(ctx context.Context, id string, enabled bool) error {
-	return s.db.WithContext(ctx).Model(&db.BizAPIKey{}).Where("id = ?", id).Updates(map[string]any{
-		"enabled":    enabled,
-		"updated_at": time.Now(),
-	}).Error
-}
-
-func (s *Service) DeleteAPIKey(ctx context.Context, id string) error {
-	return s.db.WithContext(ctx).Delete(&db.BizAPIKey{}, "id = ?", id).Error
-}
-
-func (s *Service) ValidateAPIKey(ctx context.Context, raw string) (*db.BizAPIKey, error) {
-	if raw == "" {
-		return nil, fmt.Errorf("missing api key")
-	}
-	var row db.BizAPIKey
-	if err := s.db.WithContext(ctx).Where("key_hash = ? AND enabled = ?", HashAPIKey(raw), true).First(&row).Error; err != nil {
-		return nil, fmt.Errorf("invalid api key")
-	}
-	now := time.Now()
-	_ = s.db.WithContext(ctx).Model(&row).Update("last_used_at", now).Error
-	return &row, nil
 }
 
 type CreateCallerTokenRequest struct {
@@ -302,7 +249,7 @@ func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRe
 	row = &db.CallerToken{
 		ID:        uuid.NewString(),
 		Name:      strings.TrimSpace(req.Name),
-		TokenHash: HashAPIKey(plain),
+		TokenHash: HashSecret(plain),
 		Prefix:    plain[:10],
 		ChannelID: strings.TrimSpace(req.ChannelID),
 		TenantID:  strings.TrimSpace(req.TenantID),
@@ -367,7 +314,7 @@ func (s *Service) ValidateCallerToken(ctx context.Context, raw string) (*CallerI
 		return nil, fmt.Errorf("missing caller token")
 	}
 	var row db.CallerToken
-	if err := s.db.WithContext(ctx).Where("token_hash = ? AND enabled = ?", HashAPIKey(raw), true).First(&row).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("token_hash = ? AND enabled = ?", HashSecret(raw), true).First(&row).Error; err != nil {
 		return nil, fmt.Errorf("invalid caller token")
 	}
 	if row.ExpiresAt != nil && row.ExpiresAt.Before(time.Now()) {

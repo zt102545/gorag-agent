@@ -78,7 +78,6 @@ func applyPoolDefaults(sqlDB *sql.DB, cfg config.DatabaseConfig) {
 func AutoMigrate(gdb *gorm.DB) error {
 	return gdb.AutoMigrate(
 		&AdminUser{},
-		&BizAPIKey{},
 		&CallerToken{},
 		&QAItem{},
 		&AIProvider{},

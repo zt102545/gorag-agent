@@ -135,7 +135,7 @@ func (s *Service) ChatConfigured(ctx context.Context) bool {
 
 func (s *Service) EmbeddingConfigured(ctx context.Context) bool {
 	cfg := s.runtime.ResolveEmbeddingConfig(ctx)
-	return cfg.Provider != "" && cfg.ModelName != ""
+	return cfg.Provider != "" && cfg.ModelName != "" && cfg.Dimensions > 0
 }
 
 func (s *Service) RuntimeRegistry() *RuntimeRegistry {

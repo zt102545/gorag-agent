@@ -41,9 +41,6 @@ func newKnowledgeModule(
 	}
 	metaStore := qa.NewSQLMetaStore(gdb)
 	qaService := qa.NewService(metaStore, vs, embedder, redisClient, embedCfg.Dimensions)
-	if err := qaService.EnsureIndex(ctx); err != nil {
-		return nil, nil, nil, fmt.Errorf("ensure vector index: %w", err)
-	}
 	return qaService, knowledgeapp.NewService(qaService), knowledgeapp.NewClassificationJobService(qaService), nil
 }
 

@@ -198,22 +198,6 @@ export function deleteUser(id: string) {
   return http.delete(`/users/${id}`)
 }
 
-export function listAPIKeys() {
-  return http.get('/api-keys')
-}
-
-export function createAPIKey(data: any) {
-  return http.post('/api-keys', data)
-}
-
-export function setAPIKeyEnabled(id: string, enabled: boolean) {
-  return http.put(`/api-keys/${id}`, { enabled })
-}
-
-export function deleteAPIKey(id: string) {
-  return http.delete(`/api-keys/${id}`)
-}
-
 export function listCallerTokens() {
   return http.get('/caller-tokens')
 }

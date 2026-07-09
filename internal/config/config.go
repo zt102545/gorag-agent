@@ -156,7 +156,13 @@ func Load(env string) (*Config, error) {
 	v.AutomaticEnv()
 
 	_ = v.BindEnv("ai.chat_model.api_key", "OPENAI_API_KEY")
+	_ = v.BindEnv("ai.chat_model.base_url", "AI_CHAT_MODEL_BASE_URL")
+	_ = v.BindEnv("ai.chat_model.model_name", "AI_CHAT_MODEL_MODEL_NAME")
 	_ = v.BindEnv("embedding.api_key", "EMBEDDING_API_KEY")
+	_ = v.BindEnv("embedding.provider", "EMBEDDING_PROVIDER")
+	_ = v.BindEnv("embedding.base_url", "EMBEDDING_BASE_URL")
+	_ = v.BindEnv("embedding.model_name", "EMBEDDING_MODEL_NAME")
+	_ = v.BindEnv("embedding.dimensions", "EMBEDDING_DIMENSIONS")
 	_ = v.BindEnv("database.driver", "DATABASE_DRIVER")
 	_ = v.BindEnv("database.mysql.dsn", "DATABASE_MYSQL_DSN")
 	_ = v.BindEnv("database.sqlite.path", "DATABASE_SQLITE_PATH")

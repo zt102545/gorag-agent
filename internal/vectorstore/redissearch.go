@@ -35,6 +35,9 @@ func (s *RedisSearchStore) key(id string) string {
 }
 
 func (s *RedisSearchStore) Ensure(ctx context.Context, dim int) error {
+	if dim <= 0 {
+		return fmt.Errorf("embedding dimensions must be configured before creating redissearch index")
+	}
 	s.dim = dim
 	_, err := s.client.FTInfo(ctx, s.indexName).Result()
 	if err == nil {

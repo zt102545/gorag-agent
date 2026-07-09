@@ -107,7 +107,6 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		KnowledgeHandler:    handler.NewKnowledgeHandler(knowledgeApp, knowledgeJobs, settingsApp),
 		AuthHandler:         handler.NewAuthHandler(authSvc),
 		UserHandler:         handler.NewUserHandler(authSvc),
-		APIKeyHandler:       handler.NewAPIKeyHandler(authSvc),
 		CallerTokenHandler:  handler.NewCallerTokenHandler(authSvc),
 		SettingsHandler:     handler.NewSettingsHandler(settingsApp),
 		AdminSessionHandler: handler.NewAdminSessionHandler(sessionApp),
