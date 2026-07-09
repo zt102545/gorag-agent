@@ -197,6 +197,9 @@ func (s *MilvusStore) Search(ctx context.Context, queryVector []float32, topK in
 				Answer:   safeAt(answers, i),
 				Category: safeAt(categories, i),
 			}
+			if i < len(r.Scores) {
+				rec.Score = float64(r.Scores[i])
+			}
 			if t := safeAt(tagsCol, i); t != "" {
 				rec.Tags = strings.Split(t, ",")
 			}

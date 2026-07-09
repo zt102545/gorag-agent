@@ -82,7 +82,11 @@ func AutoMigrate(gdb *gorm.DB) error {
 		&CallerToken{},
 		&QAItem{},
 		&AIProvider{},
+		&AIProviderProfile{},
 		&Prompt{},
+		&AgentConfig{},
+		&ChatLightRule{},
+		&AIErrorLog{},
 		&Session{},
 		&Message{},
 	)

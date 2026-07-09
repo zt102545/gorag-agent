@@ -42,6 +42,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	}
 
 	authSvc := auth.NewService(gdb, cfg.JWT)
+	aiErrorSvc := admin.NewAIErrorService(gdb)
 	if err := authSvc.SeedAdmin(ctx, cfg.Admin.Username, cfg.Admin.Password); err != nil {
 		_ = redisClient.Close()
 		return nil, nil, fmt.Errorf("seed admin: %w", err)
@@ -92,7 +93,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 
 	runner := agent.NewRunner(ctx, customerAgent, checkpointStore)
 
-	classifier := qa.NewClassifier(qaService, runtime, newModelFactory(runtime), cfg.Classify.Workers)
+	classifier := qa.NewClassifier(qaService, runtime, newModelFactory(runtime), cfg.Classify.Workers, aiErrorSvc)
 	classifier.Start(ctx)
 
 	intentAnalyzer := rag.NewIntentAnalyzer(runtime, newModelFactory(runtime), admin.PromptIntentRoute, 0.6)
@@ -101,15 +102,16 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	router := newHTTPRouter(cfg, &server.Deps{
 		Auth:                authSvc,
 		SessionHandler:      handler.NewSessionHandler(sessionApp),
-		ChatHandler:         handler.NewChatHandler(runner.Inner(), sessionStore, sseWriter, intentAnalyzer),
+		ChatHandler:         handler.NewChatHandler(runner.Inner(), sessionStore, sseWriter, ragService, intentAnalyzer, settingsApp, aiErrorSvc),
 		ApprovalHandler:     handler.NewApprovalHandler(runner.Inner(), sessionStore, sseWriter),
-		KnowledgeHandler:    handler.NewKnowledgeHandler(knowledgeApp, knowledgeJobs),
+		KnowledgeHandler:    handler.NewKnowledgeHandler(knowledgeApp, knowledgeJobs, settingsApp),
 		AuthHandler:         handler.NewAuthHandler(authSvc),
 		UserHandler:         handler.NewUserHandler(authSvc),
 		APIKeyHandler:       handler.NewAPIKeyHandler(authSvc),
 		CallerTokenHandler:  handler.NewCallerTokenHandler(authSvc),
 		SettingsHandler:     handler.NewSettingsHandler(settingsApp),
 		AdminSessionHandler: handler.NewAdminSessionHandler(sessionApp),
+		AIErrorHandler:      handler.NewAIErrorHandler(aiErrorSvc),
 	})
 
 	cleanup := func() {

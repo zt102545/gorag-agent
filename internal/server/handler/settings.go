@@ -62,6 +62,59 @@ func (h *SettingsHandler) UpdateEmbeddingProvider(c *gin.Context) {
 	response.OK(c, view)
 }
 
+func (h *SettingsHandler) ListProviderProfiles(c *gin.Context) {
+	rows, err := h.settings.ListProviderProfiles(c.Request.Context(), c.Param("kind"))
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, rows)
+}
+
+func (h *SettingsHandler) CreateProviderProfile(c *gin.Context) {
+	var req admin.UpdateProviderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	row, err := h.settings.CreateProviderProfile(c.Request.Context(), c.Param("kind"), req)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, row)
+}
+
+func (h *SettingsHandler) UpdateProviderProfile(c *gin.Context) {
+	var req admin.UpdateProviderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	row, err := h.settings.UpdateProviderProfile(c.Request.Context(), c.Param("kind"), c.Param("id"), req)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, row)
+}
+
+func (h *SettingsHandler) ActivateProviderProfile(c *gin.Context) {
+	if err := h.settings.ActivateProviderProfile(c.Request.Context(), c.Param("kind"), c.Param("id")); err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"updated": true})
+}
+
+func (h *SettingsHandler) DeleteProviderProfile(c *gin.Context) {
+	if err := h.settings.DeleteProviderProfile(c.Request.Context(), c.Param("kind"), c.Param("id")); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"deleted": true})
+}
+
 func (h *SettingsHandler) ListPrompts(c *gin.Context) {
 	rows, err := h.settings.ListPrompts(c.Request.Context())
 	if err != nil {
@@ -94,4 +147,72 @@ func (h *SettingsHandler) UpdatePrompt(c *gin.Context) {
 		return
 	}
 	response.OK(c, row)
+}
+
+func (h *SettingsHandler) GetAgentConfig(c *gin.Context) {
+	row, err := h.settings.GetAgentConfig(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, row)
+}
+
+func (h *SettingsHandler) UpdateAgentConfig(c *gin.Context) {
+	var req admin.UpdateAgentConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	row, err := h.settings.UpdateAgentConfig(c.Request.Context(), req)
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, row)
+}
+
+func (h *SettingsHandler) ListChatLightRules(c *gin.Context) {
+	rows, err := h.settings.ListChatLightRules(c.Request.Context(), c.Query("enabled") == "true")
+	if err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, rows)
+}
+
+func (h *SettingsHandler) CreateChatLightRule(c *gin.Context) {
+	var req admin.UpsertChatLightRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	row, err := h.settings.CreateChatLightRule(c.Request.Context(), req)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, row)
+}
+
+func (h *SettingsHandler) UpdateChatLightRule(c *gin.Context) {
+	var req admin.UpsertChatLightRuleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	row, err := h.settings.UpdateChatLightRule(c.Request.Context(), c.Param("id"), req)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, row)
+}
+
+func (h *SettingsHandler) DeleteChatLightRule(c *gin.Context) {
+	if err := h.settings.DeleteChatLightRule(c.Request.Context(), c.Param("id")); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"deleted": true})
 }

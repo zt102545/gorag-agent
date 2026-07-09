@@ -11,6 +11,8 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/yourorg/agent_customer_service/internal/admin"
 )
 
 type PromptResolver interface {
@@ -24,9 +26,10 @@ type Classifier struct {
 	prompts  PromptResolver
 	newModel ModelFactory
 	workers  int
+	errors   *admin.AIErrorService
 }
 
-func NewClassifier(service *Service, prompts PromptResolver, newModel ModelFactory, workers int) *Classifier {
+func NewClassifier(service *Service, prompts PromptResolver, newModel ModelFactory, workers int, errors *admin.AIErrorService) *Classifier {
 	if workers <= 0 {
 		workers = 1
 	}
@@ -35,6 +38,7 @@ func NewClassifier(service *Service, prompts PromptResolver, newModel ModelFacto
 		prompts:  prompts,
 		newModel: newModel,
 		workers:  workers,
+		errors:   errors,
 	}
 }
 
@@ -94,6 +98,7 @@ func (c *Classifier) process(ctx context.Context, id string) error {
 	chatModel, err := c.newModel(ctx)
 	if err != nil {
 		_ = c.service.MarkClassifyStatus(ctx, id, ClassifyFailed, err.Error())
+		c.reportAIError(ctx, "qa_classify_model", err.Error(), id, "create classify model")
 		return err
 	}
 	msg, err := chatModel.Generate(ctx, []*schema.Message{
@@ -102,19 +107,35 @@ func (c *Classifier) process(ctx context.Context, id string) error {
 	})
 	if err != nil {
 		_ = c.service.MarkClassifyStatus(ctx, id, ClassifyFailed, err.Error())
+		c.reportAIError(ctx, "qa_classify_generate", err.Error(), id, prompt)
 		return err
 	}
 	parsed, err := parseClassifyJSON(msg.Content)
 	if err != nil {
 		_ = c.service.MarkClassifyStatus(ctx, id, ClassifyFailed, err.Error())
+		c.reportAIError(ctx, "qa_classify_parse", err.Error(), id, msg.Content)
 		return err
 	}
 	if strings.TrimSpace(parsed.Category) == "" && len(parsed.Tags) == 0 {
 		err = fmt.Errorf("empty classification result")
 		_ = c.service.MarkClassifyStatus(ctx, id, ClassifyFailed, err.Error())
+		c.reportAIError(ctx, "qa_classify_empty", err.Error(), id, msg.Content)
 		return err
 	}
 	return c.service.ApplyClassification(ctx, id, parsed.Category, parsed.Tags)
+}
+
+func (c *Classifier) reportAIError(ctx context.Context, stage, message, sessionID, details string) {
+	if c.errors == nil || strings.TrimSpace(message) == "" {
+		return
+	}
+	_ = c.errors.Report(ctx, admin.AIErrorInput{
+		Source:    "qa_classifier",
+		Stage:     stage,
+		Message:   message,
+		SessionID: sessionID,
+		Details:   details,
+	})
 }
 
 func parseClassifyJSON(content string) (*classifyResult, error) {

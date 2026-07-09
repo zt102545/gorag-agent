@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"strconv"
 	"time"
 
@@ -8,21 +9,26 @@ import (
 
 	knowledgeapp "github.com/yourorg/agent_customer_service/internal/application/knowledge"
 	sessionapp "github.com/yourorg/agent_customer_service/internal/application/session"
+	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
 	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
 	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 )
 
 type KnowledgeHandler struct {
-	service *knowledgeapp.Service
-	jobs    *knowledgeapp.ClassificationJobService
+	service  *knowledgeapp.Service
+	jobs     *knowledgeapp.ClassificationJobService
+	settings *settingsapp.Service
 }
 
-func NewKnowledgeHandler(service *knowledgeapp.Service, jobs *knowledgeapp.ClassificationJobService) *KnowledgeHandler {
-	return &KnowledgeHandler{service: service, jobs: jobs}
+func NewKnowledgeHandler(service *knowledgeapp.Service, jobs *knowledgeapp.ClassificationJobService, settings *settingsapp.Service) *KnowledgeHandler {
+	return &KnowledgeHandler{service: service, jobs: jobs, settings: settings}
 }
 
 func (h *KnowledgeHandler) Create(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
 	var req qa.CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
@@ -46,6 +52,9 @@ func (h *KnowledgeHandler) Get(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Update(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
 	var req qa.UpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
@@ -86,6 +95,9 @@ func (h *KnowledgeHandler) List(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Import(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		response.BadRequest(c, "file is required")
@@ -107,6 +119,9 @@ func (h *KnowledgeHandler) Import(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Reclassify(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
 	item, err := h.jobs.Reclassify(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.NotFound(c, err.Error())
@@ -131,6 +146,17 @@ func (h *KnowledgeHandler) Tags(c *gin.Context) {
 		return
 	}
 	response.OK(c, tags)
+}
+
+func (h *KnowledgeHandler) canUseEmbedding(c *gin.Context) bool {
+	if h.settings == nil {
+		return true
+	}
+	if !h.settings.EmbeddingConfigured(c.Request.Context()) {
+		response.Error(c, http.StatusServiceUnavailable, "embedding model is not configured in GM")
+		return false
+	}
+	return true
 }
 
 type AdminSessionHandler struct {

@@ -18,6 +18,7 @@ type RuntimeRegistry struct {
 	mu            sync.RWMutex
 	chatCfg       *config.ChatModelConfig
 	embeddingCfg  *config.EmbeddingConfig
+	agentCfg      *admin.AgentConfigView
 	promptContent map[string]string
 }
 
@@ -78,6 +79,22 @@ func (r *RuntimeRegistry) GetPromptContent(ctx context.Context, key, fallback st
 	return content
 }
 
+func (r *RuntimeRegistry) ResolveAgentConfig(ctx context.Context) admin.AgentConfigView {
+	r.mu.RLock()
+	if r.agentCfg != nil {
+		cfg := *r.agentCfg
+		r.mu.RUnlock()
+		return cfg
+	}
+	r.mu.RUnlock()
+
+	cfg := r.settings.ResolveAgentConfig(ctx)
+	r.mu.Lock()
+	r.agentCfg = &cfg
+	r.mu.Unlock()
+	return cfg
+}
+
 func (r *RuntimeRegistry) NewChatModel(ctx context.Context) (model.ToolCallingChatModel, error) {
 	return modelfactory.NewChatModel(ctx, r.ResolveChatConfig(ctx))
 }
@@ -98,6 +115,12 @@ func (r *RuntimeRegistry) InvalidateProvider(kind string) {
 		r.chatCfg = nil
 		r.embeddingCfg = nil
 	}
+}
+
+func (r *RuntimeRegistry) InvalidateAgentConfig() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.agentCfg = nil
 }
 
 func (r *RuntimeRegistry) InvalidatePrompt(key string) {

@@ -23,6 +23,11 @@
           <el-icon><Cpu /></el-icon>
           <span>AI 提供商</span>
         </el-menu-item>
+        <el-menu-item v-if="auth.isAdmin" index="/ai-errors">
+          <el-icon><Warning /></el-icon>
+          <span>AI 错误</span>
+          <el-badge v-if="unresolvedCount > 0" :value="unresolvedCount" class="menu-badge" />
+        </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/caller-tokens">
           <el-icon><Key /></el-icon>
           <span>调用方 Token</span>
@@ -41,6 +46,9 @@
       <el-header class="header">
         <div class="title">{{ (route.meta.title as string) || '管理台' }}</div>
         <div class="user">
+          <el-badge v-if="auth.isAdmin && unresolvedCount > 0" :value="unresolvedCount" class="header-badge">
+            <span class="alert-link" @click="router.push('/ai-errors')">AI 错误待处理</span>
+          </el-badge>
           <span>{{ auth.user?.username }} ({{ auth.user?.role }})</span>
           <el-button link type="danger" @click="onLogout">退出</el-button>
         </div>
@@ -53,17 +61,44 @@
 </template>
 
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import * as api from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const unresolvedCount = ref(0)
+let timer: number | undefined
+
+async function refreshErrors() {
+  if (!auth.isAdmin) return
+  try {
+    const { data } = await api.getAIErrorUnresolvedCount()
+    unresolvedCount.value = data.count || 0
+  } catch {
+    unresolvedCount.value = 0
+  }
+}
 
 function onLogout() {
   auth.logout()
   router.push('/login')
 }
+
+onMounted(() => {
+  void refreshErrors()
+  timer = window.setInterval(() => {
+    void refreshErrors()
+  }, 30000)
+})
+
+onBeforeUnmount(() => {
+  if (timer) {
+    window.clearInterval(timer)
+  }
+})
 </script>
 
 <style scoped>
@@ -109,5 +144,15 @@ function onLogout() {
   gap: 12px;
   align-items: center;
   color: #4b5563;
+}
+.alert-link {
+  cursor: pointer;
+  color: #dc2626;
+}
+.menu-badge {
+  margin-left: auto;
+}
+.header-badge {
+  margin-right: 8px;
 }
 </style>

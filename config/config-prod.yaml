@@ -1,4 +1,5 @@
 server:
+  host: 0.0.0.0
   mode: release
 
 session:
@@ -7,4 +8,4 @@ session:
 # 生产可按实际情况覆盖：
 # 1) database.driver=mysql
 # 2) vector_store.provider=milvus 或 redissearch
-# 3) embedding / ai.chat_model 的 base_url / model_name / key 走环境变量
+# 3) 模型配置统一在 GM 后台维护；这里不再提供服务启动兜底值

@@ -19,6 +19,7 @@ const router = createRouter({
         { path: 'chat', name: 'chat', component: () => import('@/views/ChatPlaygroundView.vue'), meta: { title: '测试客服' } },
         { path: 'sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue'), meta: { title: '会话留存' } },
         { path: 'providers', name: 'providers', component: () => import('@/views/ProvidersView.vue'), meta: { title: 'AI 提供商', roles: ['admin'] } },
+        { path: 'ai-errors', name: 'ai-errors', component: () => import('@/views/AIErrorsView.vue'), meta: { title: 'AI 错误', roles: ['admin'] } },
         { path: 'prompts', name: 'prompts', component: () => import('@/views/PromptsView.vue'), meta: { title: '提示词', roles: ['admin', 'editor'] } },
         { path: 'users', name: 'users', component: () => import('@/views/UsersView.vue'), meta: { title: '用户管理', roles: ['admin'] } },
         { path: 'api-keys', name: 'api-keys', component: () => import('@/views/APIKeysView.vue'), meta: { title: 'API Keys', roles: ['admin'] } },

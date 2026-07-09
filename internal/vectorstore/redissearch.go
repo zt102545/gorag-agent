@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
@@ -118,6 +119,11 @@ func (s *RedisSearchStore) Search(ctx context.Context, queryVector []float32, to
 			Question: doc.Fields["question"],
 			Answer:   doc.Fields["answer"],
 			Category: doc.Fields["category"],
+		}
+		if raw := strings.TrimSpace(doc.Fields["score"]); raw != "" {
+			if score, err := strconv.ParseFloat(raw, 64); err == nil {
+				rec.Score = score
+			}
 		}
 		if t := doc.Fields["tags"]; t != "" {
 			rec.Tags = strings.Split(t, ",")

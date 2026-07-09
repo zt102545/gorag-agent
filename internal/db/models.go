@@ -141,6 +141,24 @@ type AIProvider struct {
 
 func (AIProvider) TableName() string { return "ai_providers" }
 
+type AIProviderProfile struct {
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	Kind        string    `gorm:"size:32;not null;index" json:"kind"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Active      bool      `gorm:"not null;default:false;index" json:"active"`
+	Provider    string    `gorm:"size:64;not null" json:"provider"`
+	BaseURL     string    `gorm:"size:512" json:"base_url"`
+	ModelName   string    `gorm:"size:128;not null" json:"model_name"`
+	APIKey      string    `gorm:"size:512" json:"-"`
+	Temperature float32   `json:"temperature,omitempty"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Dimensions  int       `json:"dimensions,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (AIProviderProfile) TableName() string { return "ai_provider_profiles" }
+
 type Prompt struct {
 	Key       string    `gorm:"column:prompt_key;primaryKey;size:64" json:"key"`
 	Content   string    `gorm:"type:text;not null" json:"content"`
@@ -148,6 +166,46 @@ type Prompt struct {
 }
 
 func (Prompt) TableName() string { return "prompts" }
+
+type AgentConfig struct {
+	Key                string    `gorm:"column:config_key;primaryKey;size:64" json:"key"`
+	DefaultReply       string    `gorm:"type:text;not null" json:"default_reply"`
+	MaxContextChars    int       `gorm:"not null;default:12000" json:"max_context_chars"`
+	MaxContextMessages int       `gorm:"not null;default:20" json:"max_context_messages"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+func (AgentConfig) TableName() string { return "agent_configs" }
+
+type ChatLightRule struct {
+	ID           string    `gorm:"primaryKey;size:36" json:"id"`
+	Name         string    `gorm:"size:128;not null" json:"name"`
+	Enabled      bool      `gorm:"not null;default:true;index" json:"enabled"`
+	Priority     int       `gorm:"not null;default:100;index" json:"priority"`
+	MatchType    string    `gorm:"size:32;not null;index" json:"match_type"`
+	Pattern      string    `gorm:"type:text;not null" json:"pattern"`
+	ActionType   string    `gorm:"size:32;not null;index" json:"action_type"`
+	ResponseText string    `gorm:"type:text" json:"response_text,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func (ChatLightRule) TableName() string { return "chat_light_rules" }
+
+type AIErrorLog struct {
+	ID         string     `gorm:"primaryKey;size:36" json:"id"`
+	Source     string     `gorm:"size:64;index" json:"source"`
+	Stage      string     `gorm:"size:128;index" json:"stage"`
+	Message    string     `gorm:"type:text;not null" json:"message"`
+	RequestID  string     `gorm:"size:64;index" json:"request_id,omitempty"`
+	SessionID  string     `gorm:"size:36;index" json:"session_id,omitempty"`
+	Details    string     `gorm:"type:text" json:"details,omitempty"`
+	Resolved   bool       `gorm:"not null;default:false;index" json:"resolved"`
+	CreatedAt  time.Time  `json:"created_at"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+}
+
+func (AIErrorLog) TableName() string { return "ai_error_logs" }
 
 type Session struct {
 	ID             string     `gorm:"primaryKey;size:36" json:"id"`

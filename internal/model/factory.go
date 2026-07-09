@@ -2,19 +2,29 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	openaiEmbedding "github.com/cloudwego/eino-ext/components/embedding/openai"
 	openaiModel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 
 	"github.com/yourorg/agent_customer_service/internal/config"
 )
 
+var (
+	ErrChatModelNotConfigured = errors.New("chat model is not configured in GM")
+	ErrEmbeddingNotConfigured = errors.New("embedding model is not configured in GM")
+)
+
 func NewChatModel(ctx context.Context, cfg config.ChatModelConfig) (model.ToolCallingChatModel, error) {
+	if cfg.Provider == "" || cfg.ModelName == "" {
+		return &unconfiguredChatModel{err: ErrChatModelNotConfigured}, nil
+	}
 	switch cfg.Provider {
-	case "openai", "":
+	case "openai":
 		temp := cfg.Temperature
 		var maxTokens *int
 		if cfg.MaxTokens > 0 {
@@ -33,8 +43,11 @@ func NewChatModel(ctx context.Context, cfg config.ChatModelConfig) (model.ToolCa
 }
 
 func NewEmbedder(ctx context.Context, cfg config.EmbeddingConfig) (embedding.Embedder, error) {
+	if cfg.Provider == "" || cfg.ModelName == "" {
+		return &unconfiguredEmbedder{err: ErrEmbeddingNotConfigured}, nil
+	}
 	switch cfg.Provider {
-	case "openai", "":
+	case "openai":
 		var dims *int
 		if cfg.Dimensions > 0 {
 			dims = &cfg.Dimensions
@@ -48,4 +61,28 @@ func NewEmbedder(ctx context.Context, cfg config.EmbeddingConfig) (embedding.Emb
 	default:
 		return nil, fmt.Errorf("unsupported embedding provider: %s", cfg.Provider)
 	}
+}
+
+type unconfiguredChatModel struct {
+	err error
+}
+
+func (m *unconfiguredChatModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	return nil, m.err
+}
+
+func (m *unconfiguredChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, m.err
+}
+
+func (m *unconfiguredChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	return m, nil
+}
+
+type unconfiguredEmbedder struct {
+	err error
+}
+
+func (e *unconfiguredEmbedder) EmbedStrings(_ context.Context, _ []string, _ ...embedding.Option) ([][]float64, error) {
+	return nil, e.err
 }

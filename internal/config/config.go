@@ -35,6 +35,7 @@ type legacyRAGConfig struct {
 }
 
 type ServerConfig struct {
+	Host string `mapstructure:"host"`
 	Port string `mapstructure:"port"`
 	Mode string `mapstructure:"mode"`
 }
@@ -159,6 +160,8 @@ func Load(env string) (*Config, error) {
 	_ = v.BindEnv("database.driver", "DATABASE_DRIVER")
 	_ = v.BindEnv("database.mysql.dsn", "DATABASE_MYSQL_DSN")
 	_ = v.BindEnv("database.sqlite.path", "DATABASE_SQLITE_PATH")
+	_ = v.BindEnv("server.host", "SERVER_HOST")
+	_ = v.BindEnv("server.port", "SERVER_PORT")
 	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
 	_ = v.BindEnv("admin.username", "ADMIN_USERNAME")
 	_ = v.BindEnv("admin.password", "ADMIN_PASSWORD")
@@ -215,17 +218,11 @@ func applyDefaults(cfg *Config) {
 	if cfg.Server.Port == "" {
 		cfg.Server.Port = "8080"
 	}
+	if cfg.Server.Host == "" {
+		cfg.Server.Host = "127.0.0.1"
+	}
 	if cfg.Session.TTL == 0 {
 		cfg.Session.TTL = 24 * time.Hour
-	}
-	if cfg.Embedding.Provider == "" {
-		cfg.Embedding.Provider = "openai"
-	}
-	if cfg.Embedding.ModelName == "" {
-		cfg.Embedding.ModelName = "text-embedding-3-small"
-	}
-	if cfg.Embedding.Dimensions == 0 {
-		cfg.Embedding.Dimensions = 1536
 	}
 	if cfg.VectorStore.Provider == "" {
 		cfg.VectorStore.Provider = "redissearch"

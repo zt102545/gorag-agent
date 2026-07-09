@@ -27,6 +27,10 @@ func NewWriter() *Writer {
 	return &Writer{}
 }
 
+func (w *Writer) WriteEvent(writer io.Writer, event Event) error {
+	return writeEvent(writer, event)
+}
+
 func (w *Writer) Write(writer io.Writer, event *adk.AgentEvent) error {
 	if event.Err != nil {
 		return writeEvent(writer, Event{

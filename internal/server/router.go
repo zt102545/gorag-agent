@@ -21,6 +21,7 @@ type Deps struct {
 	CallerTokenHandler  *handler.CallerTokenHandler
 	SettingsHandler     *handler.SettingsHandler
 	AdminSessionHandler *handler.AdminSessionHandler
+	AIErrorHandler      *handler.AIErrorHandler
 }
 
 func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
@@ -109,6 +110,10 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 				adminOnly.PUT("/api-keys/:id", deps.APIKeyHandler.SetEnabled)
 				adminOnly.DELETE("/api-keys/:id", deps.APIKeyHandler.Delete)
 
+				adminOnly.GET("/ai-errors", deps.AIErrorHandler.List)
+				adminOnly.GET("/ai-errors/unresolved-count", deps.AIErrorHandler.UnresolvedCount)
+				adminOnly.PUT("/ai-errors/:id/resolve", deps.AIErrorHandler.Resolve)
+
 				adminOnly.GET("/caller-tokens", deps.CallerTokenHandler.List)
 				adminOnly.POST("/caller-tokens", deps.CallerTokenHandler.Create)
 				adminOnly.PUT("/caller-tokens/:id", deps.CallerTokenHandler.Update)
@@ -118,6 +123,17 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 				adminOnly.PUT("/providers/chat", deps.SettingsHandler.UpdateChatProvider)
 				adminOnly.GET("/providers/embedding", deps.SettingsHandler.GetEmbeddingProvider)
 				adminOnly.PUT("/providers/embedding", deps.SettingsHandler.UpdateEmbeddingProvider)
+				adminOnly.GET("/providers/:kind/profiles", deps.SettingsHandler.ListProviderProfiles)
+				adminOnly.POST("/providers/:kind/profiles", deps.SettingsHandler.CreateProviderProfile)
+				adminOnly.PUT("/providers/:kind/profiles/:id", deps.SettingsHandler.UpdateProviderProfile)
+				adminOnly.PUT("/providers/:kind/profiles/:id/activate", deps.SettingsHandler.ActivateProviderProfile)
+				adminOnly.DELETE("/providers/:kind/profiles/:id", deps.SettingsHandler.DeleteProviderProfile)
+				adminOnly.GET("/agent-config", deps.SettingsHandler.GetAgentConfig)
+				adminOnly.PUT("/agent-config", deps.SettingsHandler.UpdateAgentConfig)
+				adminOnly.GET("/chat-light-rules", deps.SettingsHandler.ListChatLightRules)
+				adminOnly.POST("/chat-light-rules", deps.SettingsHandler.CreateChatLightRule)
+				adminOnly.PUT("/chat-light-rules/:id", deps.SettingsHandler.UpdateChatLightRule)
+				adminOnly.DELETE("/chat-light-rules/:id", deps.SettingsHandler.DeleteChatLightRule)
 
 				adminOnly.PUT("/prompts/:key", deps.SettingsHandler.UpdatePrompt)
 			}

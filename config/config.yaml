@@ -2,6 +2,8 @@
 # HTTP 服务
 # =============================================================================
 server:
+  # 监听地址。默认 127.0.0.1 仅本机可访问；改成 0.0.0.0 可供局域网/容器外访问。
+  host: 127.0.0.1
   # 监听端口。浏览器 / curl / GM Vite 代理访问后端用这个端口。
   port: "8080"
   # Gin 模式：debug=详细日志；release=生产（少日志）。仅影响 HTTP 框架行为。
@@ -9,42 +11,28 @@ server:
 
 # =============================================================================
 # 对话大模型（Chat）
-# 用途：Agent 多轮对话、转人工决策、QA 异步「分类/打标」。
-# 注意：这里只负责「生成文字」，不负责把文本变成向量；向量化请看下方 embedding。
+# 模型配置统一在 GM 后台维护；这里不再提供任何默认兜底值。
+# 若数据库里没有可用 chat 配置，请先在 GM 后台创建并激活。
 # =============================================================================
 ai:
   chat_model:
-    # 模型厂商适配器。当前仅支持 openai（含任何 OpenAI 兼容网关）。
-    provider: openai
-    # API 根地址。空=官方默认；可填代理如 https://your-proxy/v1。
-    # 改这个不会影响 embedding，除非你也给 embedding 配了同样的 base_url。
+    # 留空表示不提供本地兜底。
+    provider: ""
     base_url: ""
-    # 对话用模型名，例如 gpt-4o、qwen-plus（取决于你的兼容网关）。
-    model_name: gpt-4o
-    # api_key 不写在 yaml（防泄露），用环境变量 OPENAI_API_KEY 注入。
-    # 采样温度：越高回答越发散；客服场景建议 0.3~0.8。
-    temperature: 0.7
-    # 单次回复最大 token 上限，防止过长输出拖慢/烧钱。
-    max_tokens: 2048
+    model_name: ""
+    temperature: 0
+    max_tokens: 0
 
 # =============================================================================
-# 向量化模型（Embedding）—— 与 chat_model 完全独立
-# 用途：把 QA 的 question（及用户查询）变成浮点向量，再写入/检索向量库。
-# 换 Chat 模型 ≠ 换 Embedding；维度变了必须重建向量索引，否则检索全错。
+# 向量化模型（Embedding）
+# 模型配置统一在 GM 后台维护；这里不再提供任何默认兜底值。
+# 若数据库里没有可用 embedding 配置，请先在 GM 后台创建并激活。
 # =============================================================================
 embedding:
-  # 第一期仅 openai（OpenAI 兼容 Embeddings API）。
-  provider: openai
-  # Embeddings API 根地址。可与 chat 不同（例如 chat 走 A 网关、embedding 走 B）。
+  provider: ""
   base_url: ""
-  # 向量化模型名，如 text-embedding-3-small / text-embedding-3-large。
-  # 不同模型经济性/召回质量不同，且输出维度可能不同。
-  model_name: text-embedding-3-small
-  # api_key：环境变量 EMBEDDING_API_KEY（兼容旧名 OPENAI_EMBEDDING_API_KEY）。
-  # 可与 OPENAI_API_KEY 相同，也可单独一把「只开 Embedding」权限的 Key。
-  # 向量维度。必须与 vector_store 里索引/collection 的 dim 一致。
-  # 改 dimensions 后旧索引不可直接复用，需重建（清空旧索引再导入 QA）。
-  dimensions: 1536
+  model_name: ""
+  dimensions: 0
 
 # =============================================================================
 # Redis 基础设施

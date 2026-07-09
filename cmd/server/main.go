@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -36,12 +37,12 @@ func main() {
 	defer cleanup()
 
 	srv := &http.Server{
-		Addr:    ":" + cfg.Server.Port,
+		Addr:    fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port),
 		Handler: app.Router,
 	}
 
 	go func() {
-		log.Printf("server listening on :%s (env=%s)", cfg.Server.Port, env)
+		log.Printf("server listening on %s:%s (env=%s)", cfg.Server.Host, cfg.Server.Port, env)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}

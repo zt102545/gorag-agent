@@ -9,6 +9,7 @@ type Record struct {
 	Answer   string
 	Category string
 	Tags     []string
+	Score    float64
 	Vector   []float32
 }
 

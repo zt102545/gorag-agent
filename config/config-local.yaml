@@ -1,4 +1,5 @@
 server:
+  host: 127.0.0.1
   mode: debug
 
 # 本地默认连本机 / WSL Redis Stack
