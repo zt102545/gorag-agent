@@ -11,9 +11,10 @@ import (
 )
 
 type Service struct {
-	store    vectorstore.Store
-	embedder embedding.Embedder
-	topK     int
+	store              vectorstore.Store
+	embedder           embedding.Embedder
+	topK               int
+	useVectorForSearch bool
 }
 
 type SearchHit struct {
@@ -32,6 +33,10 @@ func NewService(store vectorstore.Store, embedder embedding.Embedder, topK int) 
 	return &Service{store: store, embedder: embedder, topK: topK}
 }
 
+func (s *Service) SetUseVectorForSearch(enabled bool) {
+	s.useVectorForSearch = enabled
+}
+
 func (s *Service) Search(ctx context.Context, query string) (string, error) {
 	hits, err := s.SearchHits(ctx, query)
 	if err != nil {
@@ -44,6 +49,14 @@ func (s *Service) Search(ctx context.Context, query string) (string, error) {
 }
 
 func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, error) {
+	records, err := s.store.SearchText(ctx, query, s.textTopK())
+	if err != nil {
+		return nil, fmt.Errorf("retrieve text documents: %w", err)
+	}
+	if !s.useVectorForSearch {
+		return searchHitsFromRecords(records), nil
+	}
+
 	vecs, err := s.embedder.EmbedStrings(ctx, []string{query})
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
@@ -56,10 +69,50 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 		qv[i] = float32(v)
 	}
 
-	records, err := s.store.Search(ctx, qv, s.topK)
+	vectorRecords, err := s.store.Search(ctx, qv, s.topK)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve documents: %w", err)
 	}
+	records = mergeRecords(records, vectorRecords, s.topK)
+	return searchHitsFromRecords(records), nil
+}
+
+func (s *Service) textTopK() int {
+	if s.useVectorForSearch {
+		return s.topK
+	}
+	return 1
+}
+
+func mergeRecords(primary, secondary []vectorstore.Record, limit int) []vectorstore.Record {
+	if limit <= 0 {
+		limit = 3
+	}
+	out := make([]vectorstore.Record, 0, limit)
+	seen := make(map[string]struct{}, limit)
+	appendUnique := func(records []vectorstore.Record) {
+		for _, rec := range records {
+			if rec.ID == "" {
+				continue
+			}
+			if _, ok := seen[rec.ID]; ok {
+				continue
+			}
+			seen[rec.ID] = struct{}{}
+			out = append(out, rec)
+			if len(out) >= limit {
+				return
+			}
+		}
+	}
+	appendUnique(primary)
+	if len(out) < limit {
+		appendUnique(secondary)
+	}
+	return out
+}
+
+func searchHitsFromRecords(records []vectorstore.Record) []SearchHit {
 	hits := make([]SearchHit, 0, len(records))
 	for _, rec := range records {
 		hits = append(hits, SearchHit{
@@ -71,7 +124,7 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 			Score:    rec.Score,
 		})
 	}
-	return hits, nil
+	return hits
 }
 
 func FormatHits(hits []SearchHit) string {

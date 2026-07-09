@@ -3,8 +3,25 @@
     <div class="toolbar">
       <el-button type="primary" @click="openCreate">创建调用方 Token</el-button>
     </div>
+
+    <el-alert
+      type="info"
+      :closable="false"
+      class="token-tip"
+      title="新创建的 Token 会在列表中持续展示。历史 Token 如果创建时没有保存明文，将只显示前缀。"
+    />
+
     <el-table :data="items" v-loading="loading">
       <el-table-column prop="name" label="名称" min-width="160" />
+      <el-table-column label="Token" min-width="320">
+        <template #default="{ row }">
+          <div v-if="row.caller_token" class="token-cell">
+            <code>{{ row.caller_token }}</code>
+            <el-button link type="primary" @click="copyToken(row.caller_token)">复制</el-button>
+          </div>
+          <span v-else class="muted">历史 Token 未保存明文，前缀：{{ row.prefix || '-' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="prefix" label="前缀" width="120" />
       <el-table-column prop="channel_id" label="渠道" width="140" />
       <el-table-column prop="tenant_id" label="租户" width="140" />
@@ -35,7 +52,7 @@
             v-model="form.expires_at"
             type="datetime"
             value-format="YYYY-MM-DDTHH:mm:ssZ"
-            placeholder="可空"
+            placeholder="可为空"
             style="width: 100%"
           />
         </el-form-item>
@@ -45,7 +62,7 @@
         v-if="createdToken"
         type="success"
         :closable="false"
-        title="请立即复制保存，明文仅展示一次"
+        title="Token 已创建，也会保留在列表中"
         :description="createdToken"
         style="margin-top: 8px"
       />
@@ -148,5 +165,30 @@ async function onDelete(row: any) {
   await load()
 }
 
+async function copyToken(token: string) {
+  await navigator.clipboard.writeText(token)
+  ElMessage.success('Token 已复制')
+}
+
 onMounted(load)
 </script>
+
+<style scoped>
+.token-tip {
+  margin-bottom: 12px;
+}
+.token-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.token-cell code {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.muted {
+  color: #6b7280;
+}
+</style>

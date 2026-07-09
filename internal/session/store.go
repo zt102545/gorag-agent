@@ -64,6 +64,7 @@ type SessionListItem struct {
 type AppendParams struct {
 	RequestID       string
 	ClientMessageID string
+	Extra           map[string]any
 }
 
 type Store interface {

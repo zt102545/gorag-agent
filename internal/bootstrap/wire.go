@@ -82,6 +82,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	}
 
 	ragService := rag.NewService(vs, embedder, cfg.VectorStore.TopK)
+	ragService.SetUseVectorForSearch(runtime.ResolveEmbeddingConfig(ctx).UseVectorForSearch)
 
 	instruction := runtime.GetPromptContent(ctx, admin.PromptAgentInstruction, agent.CustomerServiceInstruction)
 	customerAgent, err := agent.NewCustomerServiceAgent(ctx, chatModel, ragService, instruction)

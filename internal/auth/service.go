@@ -247,17 +247,18 @@ func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRe
 		return "", nil, err
 	}
 	row = &db.CallerToken{
-		ID:        uuid.NewString(),
-		Name:      strings.TrimSpace(req.Name),
-		TokenHash: HashSecret(plain),
-		Prefix:    plain[:10],
-		ChannelID: strings.TrimSpace(req.ChannelID),
-		TenantID:  strings.TrimSpace(req.TenantID),
-		Enabled:   true,
-		Remark:    strings.TrimSpace(req.Remark),
-		ExpiresAt: req.ExpiresAt,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:         uuid.NewString(),
+		Name:       strings.TrimSpace(req.Name),
+		TokenHash:  HashSecret(plain),
+		PlainToken: plain,
+		Prefix:     plain[:10],
+		ChannelID:  strings.TrimSpace(req.ChannelID),
+		TenantID:   strings.TrimSpace(req.TenantID),
+		Enabled:    true,
+		Remark:     strings.TrimSpace(req.Remark),
+		ExpiresAt:  req.ExpiresAt,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
 		return "", nil, err

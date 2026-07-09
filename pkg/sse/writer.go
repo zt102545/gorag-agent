@@ -56,16 +56,14 @@ func (w *Writer) Write(writer io.Writer, event *adk.AgentEvent) error {
 func (w *Writer) writeMessageOutput(writer io.Writer, event *adk.AgentEvent) error {
 	msgOutput := event.Output.MessageOutput
 	if msg := msgOutput.Message; msg != nil {
-		eventType := "message"
 		if msg.Role == schema.Tool {
-			eventType = "tool_result"
+			return nil
 		}
 		return writeEvent(writer, Event{
-			Type:      eventType,
+			Type:      "message",
 			AgentName: event.AgentName,
 			RunPath:   formatRunPath(event.RunPath),
 			Content:   msg.Content,
-			ToolCalls: msg.ToolCalls,
 		})
 	}
 
@@ -76,7 +74,6 @@ func (w *Writer) writeMessageOutput(writer io.Writer, event *adk.AgentEvent) err
 }
 
 func (w *Writer) writeStream(writer io.Writer, event *adk.AgentEvent, stream *schema.StreamReader[*schema.Message]) error {
-	toolCallsMap := make(map[int][]*schema.Message)
 	for {
 		chunk, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -90,41 +87,15 @@ func (w *Writer) writeStream(writer io.Writer, event *adk.AgentEvent, stream *sc
 				Error:     fmt.Sprintf("stream error: %v", err),
 			})
 		}
-		if chunk.Content != "" {
-			eventType := "stream_chunk"
-			if chunk.Role == schema.Tool {
-				eventType = "tool_result_chunk"
-			}
+		if chunk.Content != "" && chunk.Role != schema.Tool {
 			if err := writeEvent(writer, Event{
-				Type:      eventType,
+				Type:      "stream_chunk",
 				AgentName: event.AgentName,
 				RunPath:   formatRunPath(event.RunPath),
 				Content:   chunk.Content,
 			}); err != nil {
 				return err
 			}
-		}
-		for _, tc := range chunk.ToolCalls {
-			if tc.Index != nil {
-				toolCallsMap[*tc.Index] = append(toolCallsMap[*tc.Index], &schema.Message{
-					Role:      chunk.Role,
-					ToolCalls: []schema.ToolCall{tc},
-				})
-			}
-		}
-	}
-	for _, msgs := range toolCallsMap {
-		concatenated, err := schema.ConcatMessages(msgs)
-		if err != nil {
-			return err
-		}
-		if err := writeEvent(writer, Event{
-			Type:      "tool_calls",
-			AgentName: event.AgentName,
-			RunPath:   formatRunPath(event.RunPath),
-			ToolCalls: concatenated.ToolCalls,
-		}); err != nil {
-			return err
 		}
 	}
 	return nil

@@ -1,85 +1,166 @@
 <template>
-  <div class="page-card chat-page">
-    <div class="chat-toolbar">
-      <div class="meta">
-        <span v-if="sessionId">会话：{{ sessionId }}</span>
-        <el-tag v-else type="info" size="small">尚未开始</el-tag>
+  <div class="playground">
+    <section class="config-panel">
+      <div class="panel-head">
+        <div>
+          <h3>测试上下文</h3>
+          <p>使用真实调用方 Token 走业务接口，便于复现外部调用场景。</p>
+        </div>
+        <el-button :loading="tokenLoading" @click="loadTokens">刷新 Token</el-button>
       </div>
-      <div class="actions">
-        <el-button @click="startNewChat" :loading="creating">新对话</el-button>
-        <el-button v-if="sessionId" @click="endChat" :disabled="sending">结束会话</el-button>
-      </div>
-    </div>
 
-    <div ref="listRef" class="chat-list">
-      <div v-if="messages.length === 0" class="empty">
-        点击「新对话」后即可测试客服回复（会走真实 Agent + QA 检索）。
-      </div>
-      <div v-for="(m, i) in messages" :key="i" class="bubble" :class="m.role">
-        <div class="role">{{ roleLabel(m.role) }}</div>
-        <div class="content">{{ m.content }}</div>
-        <div v-if="m.role === 'tool' && m.qaHits?.length" class="qa-debug">
-          <div class="qa-debug-title">命中 QA</div>
-          <div v-for="(hit, hitIndex) in m.qaHits" :key="hitIndex" class="qa-hit">
-            <div class="qa-hit-meta">
-              <el-tag v-if="hit.category" size="small">{{ hit.category }}</el-tag>
-              <el-tag v-for="tag in hit.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
-            </div>
-            <div class="qa-hit-question">Q: {{ hit.question }}</div>
-            <div class="qa-hit-answer">A: {{ hit.answer }}</div>
+      <el-form label-width="96px" class="config-form">
+        <el-form-item label="调用 Token" required>
+          <el-select v-model="selectedTokenId" filterable clearable placeholder="选择已保存明文的 Token" @change="applySelectedToken">
+            <el-option
+              v-for="token in tokens"
+              :key="token.id"
+              :label="`${token.name || token.prefix} (${token.prefix})`"
+              :value="token.id"
+              :disabled="!token.caller_token || !token.enabled"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="Token 明文" required>
+          <el-input v-model="callerToken" show-password placeholder="可直接粘贴调用方 Token" />
+        </el-form-item>
+        <el-form-item label="调用方用户" required>
+          <el-input v-model="callerUserId" placeholder="例如 user_001，用于创建和查询历史会话" />
+        </el-form-item>
+        <el-form-item label="渠道">
+          <el-input v-model="channelId" placeholder="为空时使用 Token 默认渠道" />
+        </el-form-item>
+        <el-form-item label="租户">
+          <el-input v-model="tenantId" placeholder="为空时使用 Token 默认租户" />
+        </el-form-item>
+        <el-form-item label="Meta">
+          <el-input v-model="metaText" type="textarea" :rows="4" placeholder='例如 {"source":"gm","order_id":"123"}' />
+        </el-form-item>
+      </el-form>
+    </section>
+
+    <section class="workbench">
+      <aside class="session-panel">
+        <div class="panel-head compact">
+          <h3>历史会话</h3>
+          <el-button size="small" :loading="historyLoading" @click="loadSessionList">查询</el-button>
+        </div>
+        <div class="session-load">
+          <el-input v-model="manualSessionId" clearable placeholder="输入会话 ID 继续" @keyup.enter="loadSessionById" />
+          <el-button @click="loadSessionById">加载</el-button>
+        </div>
+        <div v-if="sessionItems.length === 0" class="empty small">暂无历史会话</div>
+        <button
+          v-for="item in sessionItems"
+          :key="item.id"
+          class="session-item"
+          :class="{ active: item.id === sessionId }"
+          @click="selectSession(item.id)"
+        >
+          <span class="session-title">{{ item.title || item.id }}</span>
+          <span class="session-sub">{{ item.last_message_preview || '无消息' }}</span>
+        </button>
+      </aside>
+
+      <main class="chat-page">
+        <div class="chat-toolbar">
+          <div class="meta">
+            <span v-if="sessionId">会话：{{ sessionId }}</span>
+            <el-tag v-else type="info" size="small">尚未开始</el-tag>
+          </div>
+          <div class="actions">
+            <el-button type="primary" @click="startNewChat" :loading="creating">新会话</el-button>
+            <el-button v-if="sessionId" @click="reloadCurrentHistory" :loading="historyLoading">刷新历史</el-button>
+            <el-button v-if="sessionId" @click="endChat" :disabled="sending">结束会话</el-button>
           </div>
         </div>
-      </div>
-      <div v-if="sending" class="bubble assistant typing">
-        <div class="role">助手</div>
-        <div class="content">{{ streaming || '思考中…' }}</div>
-      </div>
-    </div>
 
-    <div v-if="pendingInterrupt" class="interrupt-bar">
-      <span>需要人工确认（{{ pendingInterrupt.id }}）</span>
-      <el-button type="success" size="small" :loading="approving" @click="approve(true)">同意继续</el-button>
-      <el-button type="danger" size="small" :loading="approving" @click="approve(false)">拒绝</el-button>
-    </div>
+        <div ref="listRef" class="chat-list">
+          <div v-if="messages.length === 0" class="empty">选择 Token 并创建或加载会话后即可测试客服回复。</div>
+          <div v-for="(m, i) in messages" :key="i" class="bubble" :class="m.role">
+            <div class="role">{{ roleLabel(m.role) }}</div>
+            <div class="content">{{ m.content }}</div>
+          </div>
+          <div v-if="sending" class="bubble assistant typing">
+            <div class="role">助手</div>
+            <div class="content">{{ streaming || '思考中...' }}</div>
+          </div>
+        </div>
 
-    <div class="composer">
-      <el-input
-        v-model="input"
-        type="textarea"
-        :rows="3"
-        placeholder="输入测试问题，例如：如何申请退款？"
-        :disabled="!sessionId || sending"
-        @keydown.enter.exact.prevent="send"
-      />
-      <el-button type="primary" :disabled="!sessionId || !input.trim()" :loading="sending" @click="send">
-        发送
-      </el-button>
-    </div>
+        <div v-if="pendingInterrupt" class="interrupt-bar">
+          <span>需要人工确认：{{ pendingInterrupt.content || pendingInterrupt.id }}</span>
+          <el-button type="success" size="small" :loading="approving" @click="approve(true)">同意继续</el-button>
+          <el-button type="danger" size="small" :loading="approving" @click="approve(false)">拒绝</el-button>
+        </div>
+
+        <div class="composer">
+          <el-input
+            v-model="input"
+            type="textarea"
+            :rows="3"
+            placeholder="输入测试问题，例如：如何申请退款？"
+            :disabled="!sessionId || sending"
+            @keydown.enter.exact.prevent="send"
+          />
+          <el-button type="primary" :disabled="!sessionId || !input.trim()" :loading="sending" @click="send">发送</el-button>
+        </div>
+      </main>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import * as api from '@/api/admin'
-import { streamPlaygroundChat, streamPlaygroundApprove, type SSEEvent } from '@/api/chat'
+import * as adminApi from '@/api/admin'
+import {
+  closeBizSession,
+  createBizSession,
+  getBizHistory,
+  getBizSession,
+  listBizSessions,
+  streamBizApprove,
+  streamBizChat,
+  type SSEEvent,
+} from '@/api/chat'
 
 interface ChatMsg {
   role: string
   content: string
-  qaHits?: QADebugHit[]
 }
 
-interface QADebugHit {
-  category: string
-  tags: string[]
-  question: string
-  answer: string
+interface CallerTokenRow {
+  id: string
+  name?: string
+  caller_token?: string
+  prefix?: string
+  channel_id?: string
+  tenant_id?: string
+  enabled?: boolean
 }
+
+interface SessionListItem {
+  id: string
+  title?: string
+  last_message_preview?: string
+}
+
+const tokens = ref<CallerTokenRow[]>([])
+const selectedTokenId = ref('')
+const callerToken = ref('')
+const callerUserId = ref('test_user')
+const channelId = ref('')
+const tenantId = ref('')
+const metaText = ref('{\n  "source": "gm_playground"\n}')
 
 const sessionId = ref('')
+const manualSessionId = ref('')
+const sessionItems = ref<SessionListItem[]>([])
 const messages = ref<ChatMsg[]>([])
 const input = ref('')
+
+const tokenLoading = ref(false)
+const historyLoading = ref(false)
 const creating = ref(false)
 const sending = ref(false)
 const approving = ref(false)
@@ -87,41 +168,169 @@ const streaming = ref('')
 const listRef = ref<HTMLElement | null>(null)
 const pendingInterrupt = ref<{ id: string; content: string } | null>(null)
 
+function callerContext() {
+  const token = callerToken.value.trim()
+  if (!token) throw new Error('请先选择或填写调用方 Token')
+  return {
+    token,
+    callerUserId: callerUserId.value.trim(),
+    channelId: channelId.value.trim(),
+    tenantId: tenantId.value.trim(),
+  }
+}
+
+function parseMeta() {
+  const raw = metaText.value.trim()
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Meta 必须是 JSON 对象')
+    }
+    return parsed
+  } catch (err: any) {
+    throw new Error(err?.message || 'Meta JSON 格式不正确')
+  }
+}
+
 function roleLabel(role: string) {
-  if (role === 'user') return '我'
+  if (role === 'user') return '用户'
   if (role === 'assistant') return '助手'
   if (role === 'tool') return '工具'
+  if (role === 'system') return '系统'
   return role
+}
+
+function normalizeMessage(raw: any): ChatMsg | null {
+  const role = String(raw?.role || raw?.Role || '').toLowerCase()
+  const content = String(raw?.content || raw?.Content || '').trim()
+  if (!content || (role !== 'user' && role !== 'assistant')) return null
+  return { role, content }
 }
 
 async function scrollBottom() {
   await nextTick()
-  if (listRef.value) {
-    listRef.value.scrollTop = listRef.value.scrollHeight
+  if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight
+}
+
+async function loadTokens() {
+  tokenLoading.value = true
+  try {
+    const { data } = await adminApi.listCallerTokens()
+    tokens.value = data || []
+    if (!callerToken.value && tokens.value.length) {
+      const first = tokens.value.find((token) => token.enabled && token.caller_token)
+      if (first) {
+        selectedTokenId.value = first.id
+        applySelectedToken()
+      }
+    }
+  } catch (err: any) {
+    tokens.value = []
+    ElMessage.info(err?.message || '无法读取 Token 列表，可手动粘贴调用方 Token')
+  } finally {
+    tokenLoading.value = false
+  }
+}
+
+function applySelectedToken() {
+  const row = tokens.value.find((token) => token.id === selectedTokenId.value)
+  if (!row) return
+  callerToken.value = row.caller_token || ''
+  if (!channelId.value) channelId.value = row.channel_id || ''
+  if (!tenantId.value) tenantId.value = row.tenant_id || ''
+}
+
+async function loadSessionList() {
+  try {
+    const ctx = callerContext()
+    if (!ctx.callerUserId) {
+      ElMessage.warning('请填写调用方用户后再查询历史会话')
+      return
+    }
+    historyLoading.value = true
+    const data = await listBizSessions(ctx, ctx.callerUserId, {
+      page: 1,
+      size: 20,
+      channel_id: ctx.channelId || '',
+      tenant_id: ctx.tenantId || '',
+    })
+    sessionItems.value = data.items || []
+  } catch (err: any) {
+    ElMessage.error(err?.message || '查询历史会话失败')
+  } finally {
+    historyLoading.value = false
   }
 }
 
 async function startNewChat() {
   creating.value = true
   try {
-    const { data } = await api.createPlaygroundSession()
+    const ctx = callerContext()
+    const meta = parseMeta()
+    const data = await createBizSession(ctx, {
+      caller_user_id: ctx.callerUserId,
+      channel_id: ctx.channelId,
+      tenant_id: ctx.tenantId,
+      meta,
+    })
     sessionId.value = data.id
+    manualSessionId.value = data.id
     messages.value = []
     streaming.value = ''
     pendingInterrupt.value = null
     input.value = ''
     ElMessage.success('已创建测试会话')
+    await loadSessionList()
+  } catch (err: any) {
+    ElMessage.error(err?.message || '创建会话失败')
   } finally {
     creating.value = false
   }
 }
 
+async function loadSessionById() {
+  const id = manualSessionId.value.trim()
+  if (!id) return
+  await selectSession(id)
+}
+
+async function selectSession(id: string) {
+  try {
+    const ctx = callerContext()
+    historyLoading.value = true
+    await getBizSession(ctx, id)
+    sessionId.value = id
+    manualSessionId.value = id
+    await reloadCurrentHistory()
+    ElMessage.success('已加载会话历史')
+  } catch (err: any) {
+    ElMessage.error(err?.message || '加载会话失败')
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+async function reloadCurrentHistory() {
+  if (!sessionId.value) return
+  const ctx = callerContext()
+  const data = await getBizHistory(ctx, sessionId.value)
+  messages.value = (data.messages || []).map(normalizeMessage).filter(Boolean) as ChatMsg[]
+  pendingInterrupt.value = null
+  await scrollBottom()
+}
+
 async function endChat() {
   if (!sessionId.value) return
-  await api.closePlaygroundSession(sessionId.value)
-  ElMessage.success('会话已结束（消息已留存）')
-  sessionId.value = ''
-  pendingInterrupt.value = null
+  try {
+    await closeBizSession(callerContext(), sessionId.value)
+    ElMessage.success('会话已结束，消息已留存')
+    sessionId.value = ''
+    pendingInterrupt.value = null
+    await loadSessionList()
+  } catch (err: any) {
+    ElMessage.error(err?.message || '结束会话失败')
+  }
 }
 
 function handleSSE(ev: SSEEvent) {
@@ -136,18 +345,12 @@ function handleSSE(ev: SSEEvent) {
     }
     return
   }
-  if (ev.type === 'tool_result' || ev.type === 'tool_result_chunk') {
-    if (ev.content) {
-      messages.value.push({ role: 'tool', content: ev.content, qaHits: parseQAHits(ev.content) })
-      void scrollBottom()
-    }
-    return
-  }
+  if (ev.type === 'tool_result' || ev.type === 'tool_result_chunk' || ev.type === 'tool_calls') return
   if (ev.type === 'action' && ev.action_type === 'interrupted' && ev.interrupt_id) {
     pendingInterrupt.value = { id: ev.interrupt_id, content: ev.content || '' }
     messages.value.push({
       role: 'assistant',
-      content: `【转人工中断】${ev.content || ev.interrupt_id}`,
+      content: `【转人工确认】${ev.content || ev.interrupt_id}`,
     })
   }
 }
@@ -164,12 +367,11 @@ async function send() {
   await scrollBottom()
 
   try {
-    await streamPlaygroundChat(sessionId.value, text, handleSSE)
-    if (streaming.value.trim()) {
-      messages.value.push({ role: 'assistant', content: streaming.value })
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || '发送失败')
+    await streamBizChat(callerContext(), sessionId.value, text, handleSSE)
+    if (streaming.value.trim()) messages.value.push({ role: 'assistant', content: streaming.value })
+    await loadSessionList()
+  } catch (err: any) {
+    ElMessage.error(err?.message || '发送失败')
   } finally {
     streaming.value = ''
     sending.value = false
@@ -185,12 +387,11 @@ async function approve(ok: boolean) {
   try {
     const interruptId = pendingInterrupt.value.id
     pendingInterrupt.value = null
-    await streamPlaygroundApprove(sessionId.value, interruptId, ok, handleSSE)
-    if (streaming.value.trim()) {
-      messages.value.push({ role: 'assistant', content: streaming.value })
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || '审批失败')
+    await streamBizApprove(callerContext(), sessionId.value, interruptId, ok, handleSSE)
+    if (streaming.value.trim()) messages.value.push({ role: 'assistant', content: streaming.value })
+    await loadSessionList()
+  } catch (err: any) {
+    ElMessage.error(err?.message || '审批失败')
   } finally {
     streaming.value = ''
     sending.value = false
@@ -199,48 +400,104 @@ async function approve(ok: boolean) {
   }
 }
 
-function parseQAHits(content: string): QADebugHit[] {
-  const blocks = content
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-
-  const hits: QADebugHit[] = []
-  for (const block of blocks) {
-    const lines = block.split('\n').map((line) => line.trim())
-    if (lines.length < 3 || !lines[0].startsWith('[')) continue
-
-    const metaLine = lines[0]
-    const questionLine = lines.find((line) => line.startsWith('Q:'))
-    const answerLine = lines.find((line) => line.startsWith('A:'))
-    if (!questionLine || !answerLine) continue
-
-    const categoryMatch = metaLine.match(/分类:\s*(.*?)(?=\s+标签:|$)/)
-    const tagsMatch = metaLine.match(/标签:\s*(.+)$/)
-    const tags = tagsMatch?.[1]
-      ? tagsMatch[1]
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      : []
-
-    hits.push({
-      category: categoryMatch?.[1]?.trim() || '',
-      tags,
-      question: questionLine.replace(/^Q:\s*/, ''),
-      answer: answerLine.replace(/^A:\s*/, ''),
-    })
-  }
-  return hits
-}
+onMounted(loadTokens)
 </script>
 
 <style scoped>
+.playground {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.config-panel,
+.session-panel,
+.chat-page {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+.config-panel {
+  padding: 14px 16px;
+}
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.panel-head.compact {
+  align-items: center;
+}
+.panel-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.panel-head p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+.config-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.config-form :deep(.el-form-item:nth-child(2)),
+.config-form :deep(.el-form-item:nth-child(6)) {
+  grid-column: 1 / -1;
+}
+.workbench {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 560px;
+}
+.session-panel {
+  padding: 12px;
+  overflow: auto;
+}
+.session-load {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.session-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 8px;
+  padding: 9px 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.session-item.active {
+  border-color: #409eff;
+  background: #eff6ff;
+}
+.session-title,
+.session-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-title {
+  font-size: 13px;
+  color: #111827;
+}
+.session-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+}
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
-  min-height: 520px;
+  min-height: 560px;
+  padding: 12px;
 }
 .chat-toolbar {
   display: flex;
@@ -263,7 +520,7 @@ function parseQAHits(content: string): QADebugHit[] {
   flex: 1;
   overflow: auto;
   background: #f8fafc;
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 16px;
   border: 1px solid #e5e7eb;
 }
@@ -272,11 +529,15 @@ function parseQAHits(content: string): QADebugHit[] {
   text-align: center;
   margin-top: 80px;
 }
+.empty.small {
+  margin: 24px 0;
+  font-size: 13px;
+}
 .bubble {
   max-width: 82%;
   margin-bottom: 12px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   border: 1px solid #e5e7eb;
 }
@@ -287,42 +548,6 @@ function parseQAHits(content: string): QADebugHit[] {
 }
 .bubble.assistant {
   background: #fff;
-}
-.bubble.tool {
-  background: #f3f4f6;
-  font-size: 13px;
-}
-.qa-debug {
-  margin-top: 10px;
-  border-top: 1px dashed #d1d5db;
-  padding-top: 10px;
-}
-.qa-debug-title {
-  font-size: 12px;
-  color: #4b5563;
-  margin-bottom: 8px;
-}
-.qa-hit {
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  margin-bottom: 8px;
-}
-.qa-hit-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-.qa-hit-question,
-.qa-hit-answer {
-  white-space: pre-wrap;
-  line-height: 1.5;
-}
-.qa-hit-question {
-  font-weight: 600;
-  margin-bottom: 4px;
 }
 .bubble.typing {
   opacity: 0.9;
@@ -356,5 +581,14 @@ function parseQAHits(content: string): QADebugHit[] {
 }
 .composer :deep(.el-textarea) {
   flex: 1;
+}
+@media (max-width: 1100px) {
+  .workbench,
+  .config-form {
+    grid-template-columns: 1fr;
+  }
+  .config-form :deep(.el-form-item) {
+    grid-column: 1 / -1;
+  }
 }
 </style>

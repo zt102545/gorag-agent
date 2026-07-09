@@ -110,9 +110,16 @@ func (s *SQLStore) AppendMessages(ctx context.Context, sessionID string, params 
 	now := time.Now()
 	rows := make([]db.Message, 0, len(messages))
 	for _, msg := range messages {
-		extra := ""
+		extraData := map[string]any{}
+		for k, v := range params.Extra {
+			extraData[k] = v
+		}
 		if msg != nil && msg.ToolCalls != nil {
-			if b, err := json.Marshal(msg.ToolCalls); err == nil {
+			extraData["tool_calls"] = msg.ToolCalls
+		}
+		extra := ""
+		if len(extraData) > 0 {
+			if b, err := json.Marshal(extraData); err == nil {
 				extra = string(b)
 			}
 		}
@@ -263,6 +270,13 @@ func toMessageView(row db.Message) MessageView {
 		var extra map[string]any
 		if err := json.Unmarshal([]byte(row.Extra), &extra); err == nil {
 			view.Extra = extra
+		} else {
+			var raw any
+			if err := json.Unmarshal([]byte(row.Extra), &raw); err == nil {
+				view.Extra = map[string]any{"raw": raw}
+			} else {
+				view.Extra = map[string]any{"raw": row.Extra}
+			}
 		}
 	}
 	return view

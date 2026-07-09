@@ -72,6 +72,38 @@ type chatDecision struct {
 	Intent           *rag.IntentResult
 	SearchQuery      string
 	SearchHits       []rag.SearchHit
+	Trace            []chatTraceStep
+}
+
+type chatTraceStep struct {
+	Name       string         `json:"name"`
+	Label      string         `json:"label"`
+	Status     string         `json:"status"`
+	Detail     string         `json:"detail,omitempty"`
+	Input      map[string]any `json:"input,omitempty"`
+	Output     map[string]any `json:"output,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	DurationMS int64          `json:"duration_ms,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+}
+
+func (d *chatDecision) addTrace(name, label, status, detail string, input, output map[string]any, err error, started time.Time) {
+	step := chatTraceStep{
+		Name:      name,
+		Label:     label,
+		Status:    status,
+		Detail:    detail,
+		Input:     input,
+		Output:    output,
+		CreatedAt: time.Now(),
+	}
+	if err != nil {
+		step.Error = err.Error()
+	}
+	if !started.IsZero() {
+		step.DurationMS = time.Since(started).Milliseconds()
+	}
+	d.Trace = append(d.Trace, step)
 }
 
 type sourceView struct {
@@ -133,6 +165,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}
 		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
 			RequestID: requestID,
+			Extra:     messageExtra(decision.Trace),
 		}, schema.AssistantMessage(decision.Reply, nil))
 		logChat(c, "session_chat_fallback", start, bizCtx, sessionID, req.ClientMessageID)
 		return
@@ -181,8 +214,19 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 
 	content := strings.TrimSpace(assistantContent.String())
 	if content != "" || len(assistantToolCalls) > 0 {
+		decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
+			"content_chars": len([]rune(content)),
+			"tool_calls":    len(assistantToolCalls),
+		}, nil, start)
+		for _, call := range assistantToolCalls {
+			decision.addTrace("tool_call", "工具调用", "finished", call.Function.Name, map[string]any{
+				"name":      call.Function.Name,
+				"arguments": call.Function.Arguments,
+			}, nil, nil, time.Time{})
+		}
 		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
 			RequestID: requestID,
+			Extra:     messageExtra(decision.Trace),
 		}, schema.AssistantMessage(content, assistantToolCalls))
 	}
 	logChat(c, "session_chat_completed", start, bizCtx, sessionID, req.ClientMessageID)
@@ -263,6 +307,16 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 	}
 
 	answer := strings.TrimSpace(assistantContent.String())
+	decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
+		"content_chars": len([]rune(answer)),
+		"tool_calls":    len(toolCalls),
+	}, nil, start)
+	for _, call := range toolCalls {
+		decision.addTrace("tool_call", "工具调用", "finished", call.Function.Name, map[string]any{
+			"name":      call.Function.Name,
+			"arguments": call.Function.Arguments,
+		}, nil, nil, time.Time{})
+	}
 	logChat(c, "stateless_ask_completed", start, bizCtx, "", req.ClientMessageID)
 	response.OK(c, gin.H{
 		"answer":           answer,
@@ -358,57 +412,137 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 	if exceedsContextLimit(cfg.MaxContextMessages, cfg.MaxContextChars, history, trimmed) {
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatContextLimit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
+		decision.addTrace("context_limit", "上下文长度检查", "blocked", "超过配置的上下文限制，直接返回默认回复", map[string]any{
+			"history_messages": len(history),
+			"input_chars":      len([]rune(trimmed)),
+		}, nil, nil, time.Time{})
 		return decision, nil
 	}
+	decision.addTrace("context_limit", "上下文长度检查", "finished", "未超过上下文限制", map[string]any{
+		"history_messages": len(history),
+		"input_chars":      len([]rune(trimmed)),
+	}, nil, nil, time.Time{})
+	ruleStart := time.Now()
 	if ruleReply, needHuman, matched, err := h.applyLightRules(ctx, trimmed); err != nil {
+		decision.addTrace("light_rules", "轻量规则匹配", "error", "读取或匹配轻量规则失败", map[string]any{
+			"query": trimmed,
+		}, nil, err, ruleStart)
 		return decision, err
 	} else if matched {
 		decision.Reply = ruleReply
 		decision.NeedHuman = needHuman
+		decision.addTrace("light_rules", "轻量规则匹配", "matched", "命中轻量规则，直接返回规则回复", map[string]any{
+			"query": trimmed,
+		}, map[string]any{
+			"need_human":  needHuman,
+			"reply_chars": len([]rune(ruleReply)),
+		}, nil, ruleStart)
 		return decision, nil
+	} else {
+		decision.addTrace("light_rules", "轻量规则匹配", "finished", "未命中轻量规则，继续意图分析", map[string]any{
+			"query": trimmed,
+		}, nil, nil, ruleStart)
 	}
 
+	intentStart := time.Now()
 	intentRes, err := h.analyzeIntent(ctx, trimmed)
 	if err != nil {
 		h.reportAIError(ctx, "intent_analyzer", err.Error(), "", "", "decide chat analyze")
+		decision.addTrace("intent_analyzer", "意图分析", "error", "意图分析失败，继续尝试检索", map[string]any{
+			"query": trimmed,
+		}, nil, err, intentStart)
 	} else {
 		decision.Intent = intentRes
+		output := map[string]any{"available": intentRes != nil}
+		if intentRes != nil {
+			output = map[string]any{
+				"intent":      intentRes.Intent,
+				"need_search": intentRes.NeedSearch,
+				"confidence":  intentRes.Confidence,
+				"reason":      intentRes.Reason,
+			}
+		}
+		decision.addTrace("intent_analyzer", "意图分析", "finished", "完成用户问题意图判断", map[string]any{
+			"query": trimmed,
+		}, output, nil, intentStart)
 	}
 	if decision.Intent != nil && !decision.Intent.NeedSearch {
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatOutOfScope, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
+		decision.addTrace("route", "路由决策", "finished", "意图分析认为不需要检索，使用默认回复", nil, map[string]any{
+			"route": "default_reply",
+		}, nil, time.Time{})
 		return decision, nil
 	}
 
+	rewriteStart := time.Now()
 	searchQuery := rag.RewriteQuery(history, trimmed)
 	if searchQuery == "" {
 		searchQuery = trimmed
 	}
 	decision.SearchQuery = searchQuery
+	decision.addTrace("query_rewrite", "检索 Query 改写", "finished", "生成知识库检索语句", map[string]any{
+		"query": trimmed,
+	}, map[string]any{
+		"search_query": searchQuery,
+		"rewritten":    searchQuery != trimmed,
+	}, nil, rewriteStart)
+	searchStart := time.Now()
 	hits, err := h.searchKnowledge(ctx, searchQuery)
 	if err != nil {
 		h.reportAIError(ctx, "knowledge_search", err.Error(), "", "", "decide chat presearch")
+		decision.addTrace("knowledge_search", "知识库检索", "error", "检索失败，继续交给后续流程处理", map[string]any{
+			"query": searchQuery,
+		}, nil, err, searchStart)
 		return decision, nil
 	}
 	decision.SearchHits = hits
+	decision.addTrace("knowledge_search", "知识库检索", "finished", "完成 QA 知识库检索", map[string]any{
+		"query": searchQuery,
+	}, map[string]any{
+		"hit_count": len(hits),
+		"sources":   buildSources(hits),
+	}, nil, searchStart)
 	if len(hits) == 0 {
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
+		decision.addTrace("route", "路由决策", "finished", "知识库无命中，使用无命中默认回复", nil, map[string]any{
+			"route": "no_hit_reply",
+		}, nil, time.Time{})
 		return decision, nil
 	}
 	decision.KnowledgeShared = true
-	switch evaluateHitLevel(searchQuery, hits) {
+	hitLevel := evaluateHitLevel(searchQuery, hits)
+	decision.addTrace("hit_evaluation", "命中质量评估", "finished", "根据问题与首条命中相似度选择回复路径", nil, map[string]any{
+		"level":        hitLevel,
+		"top_question": hits[0].Question,
+		"top_score":    hits[0].Score,
+	}, nil, time.Time{})
+	switch hitLevel {
 	case "high":
 		decision.Reply = strings.TrimSpace(hits[0].Answer)
 		if decision.Reply == "" {
 			decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 			decision.UsedDefaultReply = true
+			decision.addTrace("route", "路由决策", "finished", "高置信命中没有答案，使用默认回复", nil, map[string]any{
+				"route": "empty_answer_default_reply",
+			}, nil, time.Time{})
+		} else {
+			decision.addTrace("route", "路由决策", "finished", "高置信命中，直接返回标准答案", nil, map[string]any{
+				"route": "direct_qa_answer",
+			}, nil, time.Time{})
 		}
 	case "mid":
 		// Let the model answer based on retrieved QA context.
+		decision.addTrace("route", "路由决策", "finished", "中等命中，交给模型基于检索上下文回答", nil, map[string]any{
+			"route": "agent_with_rag_context",
+		}, nil, time.Time{})
 	default:
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
+		decision.addTrace("route", "路由决策", "finished", "低置信命中，使用无命中默认回复", nil, map[string]any{
+			"route": "low_confidence_reply",
+		}, nil, time.Time{})
 	}
 	return decision, nil
 }
@@ -525,6 +659,13 @@ func buildSources(hits []rag.SearchHit) []sourceView {
 		})
 	}
 	return out
+}
+
+func messageExtra(trace []chatTraceStep) map[string]any {
+	if len(trace) == 0 {
+		return nil
+	}
+	return map[string]any{"trace": trace}
 }
 
 func matchLightRule(rule admin.ChatLightRuleView, content string) bool {

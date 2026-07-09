@@ -59,6 +59,24 @@ function authHeaders(): HeadersInit {
   }
 }
 
+interface CallerContext {
+  token: string
+  callerUserId?: string
+  channelId?: string
+  tenantId?: string
+}
+
+function callerHeaders(ctx: CallerContext): HeadersInit {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Caller-Token': ctx.token,
+  }
+  if (ctx.callerUserId) headers['X-Caller-User-Id'] = ctx.callerUserId
+  if (ctx.channelId) headers['X-Channel-Id'] = ctx.channelId
+  if (ctx.tenantId) headers['X-Tenant-Id'] = ctx.tenantId
+  return headers
+}
+
 export async function streamPlaygroundChat(sessionId: string, message: string, onEvent: EventHandler) {
   const res = await fetch(`/api/v1/admin/playground/sessions/${sessionId}/chat`, {
     method: 'POST',
@@ -80,4 +98,89 @@ export async function streamPlaygroundApprove(
     body: JSON.stringify({ interrupt_id: interruptId, approved }),
   })
   await readSSE(res, onEvent)
+}
+
+export async function createBizSession(ctx: CallerContext, payload: Record<string, unknown>) {
+  const res = await fetch('/api/v1/biz/sessions', {
+    method: 'POST',
+    headers: callerHeaders(ctx),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return readData(res)
+}
+
+export async function getBizSession(ctx: CallerContext, sessionId: string) {
+  const res = await fetch(`/api/v1/biz/sessions/${sessionId}`, {
+    headers: callerHeaders(ctx),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return readData(res)
+}
+
+export async function getBizHistory(ctx: CallerContext, sessionId: string) {
+  const res = await fetch(`/api/v1/biz/sessions/${sessionId}/history`, {
+    headers: callerHeaders(ctx),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return readData(res)
+}
+
+export async function closeBizSession(ctx: CallerContext, sessionId: string) {
+  const res = await fetch(`/api/v1/biz/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: callerHeaders(ctx),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return readData(res)
+}
+
+export async function listBizSessions(ctx: CallerContext, callerUserId: string, params: Record<string, string | number>) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== '') query.set(key, String(value))
+  })
+  const res = await fetch(`/api/v1/biz/users/${encodeURIComponent(callerUserId)}/sessions?${query.toString()}`, {
+    headers: callerHeaders(ctx),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return readData(res)
+}
+
+export async function streamBizChat(ctx: CallerContext, sessionId: string, message: string, onEvent: EventHandler) {
+  const res = await fetch(`/api/v1/biz/sessions/${sessionId}/chat`, {
+    method: 'POST',
+    headers: callerHeaders(ctx),
+    body: JSON.stringify({ message }),
+  })
+  await readSSE(res, onEvent)
+}
+
+export async function streamBizApprove(
+  ctx: CallerContext,
+  sessionId: string,
+  interruptId: string,
+  approved: boolean,
+  onEvent: EventHandler,
+) {
+  const res = await fetch(`/api/v1/biz/sessions/${sessionId}/approve`, {
+    method: 'POST',
+    headers: callerHeaders(ctx),
+    body: JSON.stringify({ interrupt_id: interruptId, approved }),
+  })
+  await readSSE(res, onEvent)
+}
+
+async function readError(res: Response) {
+  try {
+    const body = await res.json()
+    return body.message || `HTTP ${res.status}`
+  } catch {
+    return `HTTP ${res.status}`
+  }
+}
+
+async function readData(res: Response) {
+  const body = await res.json()
+  return body.data
 }

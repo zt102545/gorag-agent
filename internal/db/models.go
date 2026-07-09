@@ -84,6 +84,7 @@ type CallerToken struct {
 	ID         string     `gorm:"primaryKey;size:36" json:"id"`
 	Name       string     `gorm:"size:128;not null" json:"name"`
 	TokenHash  string     `gorm:"size:255;not null;index" json:"-"`
+	PlainToken string     `gorm:"type:text" json:"caller_token,omitempty"`
 	Prefix     string     `gorm:"size:24;not null" json:"prefix"`
 	ChannelID  string     `gorm:"size:128;index" json:"channel_id,omitempty"`
 	TenantID   string     `gorm:"size:128;index" json:"tenant_id,omitempty"`
@@ -128,19 +129,20 @@ type AIProvider struct {
 func (AIProvider) TableName() string { return "ai_providers" }
 
 type AIProviderProfile struct {
-	ID          string    `gorm:"primaryKey;size:36" json:"id"`
-	Kind        string    `gorm:"size:32;not null;index" json:"kind"`
-	Name        string    `gorm:"size:128;not null" json:"name"`
-	Active      bool      `gorm:"not null;default:false;index" json:"active"`
-	Provider    string    `gorm:"size:64;not null" json:"provider"`
-	BaseURL     string    `gorm:"size:512" json:"base_url"`
-	ModelName   string    `gorm:"size:128;not null" json:"model_name"`
-	APIKey      string    `gorm:"size:512" json:"-"`
-	Temperature float32   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Dimensions  int       `json:"dimensions,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                 string    `gorm:"primaryKey;size:36" json:"id"`
+	Kind               string    `gorm:"size:32;not null;index" json:"kind"`
+	Name               string    `gorm:"size:128;not null" json:"name"`
+	Active             bool      `gorm:"not null;default:false;index" json:"active"`
+	Provider           string    `gorm:"size:64;not null" json:"provider"`
+	BaseURL            string    `gorm:"size:512" json:"base_url"`
+	ModelName          string    `gorm:"size:128;not null" json:"model_name"`
+	APIKey             string    `gorm:"size:512" json:"-"`
+	Temperature        float32   `json:"temperature,omitempty"`
+	MaxTokens          int       `json:"max_tokens,omitempty"`
+	Dimensions         int       `json:"dimensions,omitempty"`
+	UseVectorForSearch bool      `gorm:"not null;default:false" json:"use_vector_for_search"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 func (AIProviderProfile) TableName() string { return "ai_provider_profiles" }

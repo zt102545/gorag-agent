@@ -1,14 +1,24 @@
 package qa
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 func ParseCSV(r io.Reader) ([]CreateRequest, error) {
-	reader := csv.NewReader(r)
+	decoded, err := decodeCSVReader(r)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := csv.NewReader(decoded)
 	reader.TrimLeadingSpace = true
 
 	records, err := reader.ReadAll()
@@ -71,4 +81,21 @@ func parseTags(raw string) []string {
 		}
 	}
 	return tags
+}
+
+func decodeCSVReader(r io.Reader) (io.Reader, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("read csv: %w", err)
+	}
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	if utf8.Valid(data) {
+		return bytes.NewReader(data), nil
+	}
+
+	decoded, err := io.ReadAll(transform.NewReader(bytes.NewReader(data), simplifiedchinese.GBK.NewDecoder()))
+	if err != nil {
+		return nil, fmt.Errorf("decode csv as gbk: %w", err)
+	}
+	return bytes.NewReader(decoded), nil
 }
