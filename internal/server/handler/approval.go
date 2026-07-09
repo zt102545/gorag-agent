@@ -66,16 +66,14 @@ func (h *ApprovalHandler) Approve(c *gin.Context) {
 		if !ok {
 			break
 		}
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Message != nil {
-			msg := event.Output.MessageOutput.Message
+		if err := h.sseWriter.WriteWithObserver(c.Writer, event, func(msg *schema.Message) {
 			if msg.Role == schema.Assistant {
 				assistantContent.WriteString(msg.Content)
 				if len(msg.ToolCalls) > 0 {
 					assistantToolCalls = append(assistantToolCalls, msg.ToolCalls...)
 				}
 			}
-		}
-		if err := h.sseWriter.Write(c.Writer, event); err != nil {
+		}); err != nil {
 			break
 		}
 		c.Writer.Flush()

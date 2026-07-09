@@ -66,7 +66,7 @@ func (h *SessionHandler) Get(c *gin.Context) {
 }
 
 func (h *SessionHandler) History(c *gin.Context) {
-	messages, err := h.service.RawHistory(c.Request.Context(), c.Param("id"))
+	messages, err := h.service.History(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

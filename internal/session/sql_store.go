@@ -109,7 +109,8 @@ func (s *SQLStore) AppendMessages(ctx context.Context, sessionID string, params 
 	}
 	now := time.Now()
 	rows := make([]db.Message, 0, len(messages))
-	for _, msg := range messages {
+	for i, msg := range messages {
+		createdAt := now.Add(time.Duration(i) * time.Nanosecond)
 		extraData := map[string]any{}
 		for k, v := range params.Extra {
 			extraData[k] = v
@@ -129,15 +130,19 @@ func (s *SQLStore) AppendMessages(ctx context.Context, sessionID string, params 
 			content = msg.Content
 			role = string(msg.Role)
 		}
+		clientMessageID := ""
+		if role == string(schema.User) {
+			clientMessageID = params.ClientMessageID
+		}
 		rows = append(rows, db.Message{
 			ID:              uuid.NewString(),
 			SessionID:       sessionID,
 			Role:            role,
 			RequestID:       params.RequestID,
-			ClientMessageID: params.ClientMessageID,
+			ClientMessageID: clientMessageID,
 			Content:         content,
 			Extra:           extra,
-			CreatedAt:       now,
+			CreatedAt:       createdAt,
 		})
 	}
 	if params.ClientMessageID != "" {

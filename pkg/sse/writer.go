@@ -32,6 +32,10 @@ func (w *Writer) WriteEvent(writer io.Writer, event Event) error {
 }
 
 func (w *Writer) Write(writer io.Writer, event *adk.AgentEvent) error {
+	return w.WriteWithObserver(writer, event, nil)
+}
+
+func (w *Writer) WriteWithObserver(writer io.Writer, event *adk.AgentEvent, observe func(*schema.Message)) error {
 	if event.Err != nil {
 		return writeEvent(writer, Event{
 			Type:      "error",
@@ -42,7 +46,7 @@ func (w *Writer) Write(writer io.Writer, event *adk.AgentEvent) error {
 	}
 
 	if event.Output != nil && event.Output.MessageOutput != nil {
-		if err := w.writeMessageOutput(writer, event); err != nil {
+		if err := w.writeMessageOutput(writer, event, observe); err != nil {
 			return err
 		}
 	}
@@ -53,9 +57,12 @@ func (w *Writer) Write(writer io.Writer, event *adk.AgentEvent) error {
 	return nil
 }
 
-func (w *Writer) writeMessageOutput(writer io.Writer, event *adk.AgentEvent) error {
+func (w *Writer) writeMessageOutput(writer io.Writer, event *adk.AgentEvent, observe func(*schema.Message)) error {
 	msgOutput := event.Output.MessageOutput
 	if msg := msgOutput.Message; msg != nil {
+		if observe != nil {
+			observe(msg)
+		}
 		if msg.Role == schema.Tool {
 			return nil
 		}
@@ -68,12 +75,12 @@ func (w *Writer) writeMessageOutput(writer io.Writer, event *adk.AgentEvent) err
 	}
 
 	if stream := msgOutput.MessageStream; stream != nil {
-		return w.writeStream(writer, event, stream)
+		return w.writeStream(writer, event, stream, observe)
 	}
 	return nil
 }
 
-func (w *Writer) writeStream(writer io.Writer, event *adk.AgentEvent, stream *schema.StreamReader[*schema.Message]) error {
+func (w *Writer) writeStream(writer io.Writer, event *adk.AgentEvent, stream *schema.StreamReader[*schema.Message], observe func(*schema.Message)) error {
 	for {
 		chunk, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -86,6 +93,9 @@ func (w *Writer) writeStream(writer io.Writer, event *adk.AgentEvent, stream *sc
 				RunPath:   formatRunPath(event.RunPath),
 				Error:     fmt.Sprintf("stream error: %v", err),
 			})
+		}
+		if observe != nil {
+			observe(chunk)
 		}
 		if chunk.Content != "" && chunk.Role != schema.Tool {
 			if err := writeEvent(writer, Event{

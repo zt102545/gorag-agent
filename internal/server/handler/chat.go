@@ -145,19 +145,13 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		return
 	}
 	if decision.Reply != "" {
-		if err := h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
-			RequestID:       requestID,
-			ClientMessageID: req.ClientMessageID,
-		}, schema.UserMessage(req.Message)); err != nil {
-			response.InternalError(c, err.Error())
-			return
-		}
 		persistCtx, cancel := persistenceContext(c.Request.Context())
 		defer cancel()
 		if err := h.sessionStore.AppendMessages(persistCtx, sessionID, session.AppendParams{
-			RequestID: requestID,
-			Extra:     messageExtra(decision.Trace),
-		}, schema.AssistantMessage(decision.Reply, nil)); err != nil {
+			RequestID:       requestID,
+			ClientMessageID: req.ClientMessageID,
+			Extra:           messageExtra(decision.Trace),
+		}, schema.UserMessage(req.Message), schema.AssistantMessage(decision.Reply, nil)); err != nil {
 			h.reportAIError(persistCtx, "session_persist", err.Error(), requestID, sessionID, "persist direct reply")
 			response.InternalError(c, err.Error())
 			return
@@ -203,16 +197,14 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		if event.Err != nil {
 			h.reportAIError(c.Request.Context(), "chat_runner", event.Err.Error(), requestID, sessionID, "session streaming runner event")
 		}
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Message != nil {
-			msg := event.Output.MessageOutput.Message
+		if err := h.sseWriter.WriteWithObserver(c.Writer, event, func(msg *schema.Message) {
 			if msg.Role == schema.Assistant {
 				assistantContent.WriteString(msg.Content)
 				if len(msg.ToolCalls) > 0 {
 					assistantToolCalls = append(assistantToolCalls, msg.ToolCalls...)
 				}
 			}
-		}
-		if err := h.sseWriter.Write(c.Writer, event); err != nil {
+		}); err != nil {
 			break
 		}
 		c.Writer.Flush()
