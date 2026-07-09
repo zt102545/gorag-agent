@@ -83,7 +83,9 @@ func (h *ApprovalHandler) Approve(c *gin.Context) {
 
 	content := strings.TrimSpace(assistantContent.String())
 	if content != "" || len(assistantToolCalls) > 0 {
-		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
+		persistCtx, cancel := persistenceContext(c.Request.Context())
+		defer cancel()
+		_ = h.sessionStore.AppendMessages(persistCtx, sessionID, session.AppendParams{
 			RequestID: c.GetString(middleware.RequestIDKey),
 		}, schema.AssistantMessage(content, assistantToolCalls))
 	}

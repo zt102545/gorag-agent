@@ -152,6 +152,16 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 			response.InternalError(c, err.Error())
 			return
 		}
+		persistCtx, cancel := persistenceContext(c.Request.Context())
+		defer cancel()
+		if err := h.sessionStore.AppendMessages(persistCtx, sessionID, session.AppendParams{
+			RequestID: requestID,
+			Extra:     messageExtra(decision.Trace),
+		}, schema.AssistantMessage(decision.Reply, nil)); err != nil {
+			h.reportAIError(persistCtx, "session_persist", err.Error(), requestID, sessionID, "persist direct reply")
+			response.InternalError(c, err.Error())
+			return
+		}
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
@@ -163,10 +173,6 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		}); err == nil {
 			c.Writer.Flush()
 		}
-		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
-			RequestID: requestID,
-			Extra:     messageExtra(decision.Trace),
-		}, schema.AssistantMessage(decision.Reply, nil))
 		logChat(c, "session_chat_fallback", start, bizCtx, sessionID, req.ClientMessageID)
 		return
 	}
@@ -224,10 +230,14 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 				"arguments": call.Function.Arguments,
 			}, nil, nil, time.Time{})
 		}
-		_ = h.sessionStore.AppendMessages(c.Request.Context(), sessionID, session.AppendParams{
+		persistCtx, cancel := persistenceContext(c.Request.Context())
+		defer cancel()
+		if err := h.sessionStore.AppendMessages(persistCtx, sessionID, session.AppendParams{
 			RequestID: requestID,
 			Extra:     messageExtra(decision.Trace),
-		}, schema.AssistantMessage(content, assistantToolCalls))
+		}, schema.AssistantMessage(content, assistantToolCalls)); err != nil {
+			h.reportAIError(persistCtx, "session_persist", err.Error(), requestID, sessionID, "persist streaming reply")
+		}
 	}
 	logChat(c, "session_chat_completed", start, bizCtx, sessionID, req.ClientMessageID)
 }
@@ -666,6 +676,10 @@ func messageExtra(trace []chatTraceStep) map[string]any {
 		return nil
 	}
 	return map[string]any{"trace": trace}
+}
+
+func persistenceContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 }
 
 func matchLightRule(rule admin.ChatLightRuleView, content string) bool {
