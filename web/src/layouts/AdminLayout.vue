@@ -25,16 +25,12 @@
         </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/ai-errors">
           <el-icon><Warning /></el-icon>
-          <span>AI 错误</span>
+          <span>错误日志</span>
           <el-badge v-if="unresolvedCount > 0" :value="unresolvedCount" class="menu-badge" />
         </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/caller-tokens">
           <el-icon><Key /></el-icon>
           <span>调用方 Token</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/api-keys">
-          <el-icon><Tickets /></el-icon>
-          <span>API Keys</span>
         </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/users">
           <el-icon><User /></el-icon>
@@ -47,7 +43,7 @@
         <div class="title">{{ (route.meta.title as string) || '管理台' }}</div>
         <div class="user">
           <el-badge v-if="auth.isAdmin && unresolvedCount > 0" :value="unresolvedCount" class="header-badge">
-            <span class="alert-link" @click="router.push('/ai-errors')">AI 错误待处理</span>
+            <span class="alert-link" @click="router.push('/ai-errors')">错误日志待处理</span>
           </el-badge>
           <span>{{ auth.user?.username }} ({{ auth.user?.role }})</span>
           <el-button link type="danger" @click="onLogout">退出</el-button>
@@ -63,6 +59,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ChatDotRound, ChatLineRound, Cpu, Document, EditPen, Key, User, Warning } from '@element-plus/icons-vue'
 import * as api from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
 
