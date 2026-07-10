@@ -145,6 +145,14 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.GET("/sessions/:id", deps.AdminSessionHandler.GMGet)
 		gm.GET("/prompts", deps.SettingsHandler.GMListPrompts)
 		gm.PUT("/prompts/:key", deps.SettingsHandler.GMUpdatePrompt)
+
+		// Test chat only needs a caller token. It reuses the same BizAuth, session
+		// persistence and chat pipeline as external callers.
+		test := gm.Group("/test", middleware.BizAuth(deps.Auth), middleware.BizRateLimit())
+		{
+			test.POST("/sessions", deps.SessionHandler.Create)
+			test.POST("/sessions/:id/chat", middleware.SessionSerial(), deps.ChatHandler.Chat)
+		}
 	}
 
 	return r
