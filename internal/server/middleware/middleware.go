@@ -74,7 +74,7 @@ func CORS() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Request-ID,X-Caller-Token,X-Caller-User-Id,X-Channel-Id,X-Tenant-Id,Idempotency-Key")
+		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Request-ID,X-Caller-Token,X-Caller-User-Id,X-Channel-Id,X-Tenant-Id,Idempotency-Key,X-GM-API-Key")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -99,6 +99,25 @@ func JWTAuth(authSvc *auth.Service) gin.HandlerFunc {
 			return
 		}
 		c.Set(ClaimsKey, claims)
+		c.Next()
+	}
+}
+
+// GMIntegrationAuth protects the GM compatibility API. It is deliberately
+// separate from the service's admin JWT because the external GM console owns
+// its own login session and token format.
+func GMIntegrationAuth(integrationKey string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if integrationKey == "" {
+			response.Error(c, http.StatusServiceUnavailable, "GM integration is not configured")
+			c.Abort()
+			return
+		}
+		if c.GetHeader("X-GM-API-Key") != integrationKey {
+			response.Error(c, http.StatusUnauthorized, "invalid GM integration key")
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

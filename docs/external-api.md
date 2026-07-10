@@ -1,5 +1,9 @@
 # 对外客服接口文档
 
+> **实现对齐说明（2026-07-10）**：当同时传入 `X-Caller-Token` 和 `Authorization` 时，服务端当前优先使用 `X-Caller-Token`；接入方应始终只传一种鉴权头，推荐 `Authorization`。`Idempotency-Key` 与 `client_message_id` 当前只用于请求/消息关联和日志，不提供服务端去重或重复请求回放；重试时请由接入方自行避免重复提交。会话 ID 是敏感资源，接入方应妥善保存，且不应向非所属用户暴露。
+
+> **历史消息说明**：`GET /sessions/:id/history` 的每条消息除 `role`、`content` 外，实际还可能返回 `id`、`request_id`、`client_message_id`、`extra` 与 `created_at` 等元数据。
+
 本文面向外部接入方，按当前唯一上线方案说明：
 
 - 仅支持 `caller token`

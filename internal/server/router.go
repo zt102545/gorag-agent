@@ -134,5 +134,15 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		}
 	}
 
+	// External GM console compatibility API. It exposes only the operational
+	// views requested by the GM UI and does not change native admin/biz APIs.
+	gm := r.Group("/api/v1/gm/ai-customer-service", middleware.GMIntegrationAuth(cfg.GM.IntegrationKey))
+	{
+		gm.GET("/qa", deps.KnowledgeHandler.GMList)
+		gm.POST("/qa/import", deps.KnowledgeHandler.GMImport)
+		gm.GET("/sessions", deps.AdminSessionHandler.GMList)
+		gm.GET("/sessions/:id", deps.AdminSessionHandler.GMGet)
+	}
+
 	return r
 }

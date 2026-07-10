@@ -21,6 +21,50 @@ type KnowledgeHandler struct {
 	settings *settingsapp.Service
 }
 
+// GMList returns the QA list in the response envelope expected by Web-GM-Client.
+// The native admin endpoint remains unchanged.
+func (h *KnowledgeHandler) GMList(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("pageNum", c.DefaultQuery("page", "1")))
+	size, _ := strconv.Atoi(c.DefaultQuery("pageSize", c.DefaultQuery("size", "20")))
+	result, err := h.service.List(c.Request.Context(), qa.ListQuery{
+		Category:       c.Query("category"),
+		ClassifyStatus: c.Query("classify_status"),
+		Tag:            c.Query("tag"),
+		Q:              c.Query("q"),
+		Page:           page,
+		Size:           size,
+	})
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, gin.H{"list": result.Items, "total": result.Total})
+}
+
+// GMImport imports a CSV QA file using the GM response envelope.
+func (h *KnowledgeHandler) GMImport(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
+	file, err := c.FormFile("file")
+	if err != nil {
+		gmError(c, http.StatusBadRequest, "file is required")
+		return
+	}
+	f, err := file.Open()
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer f.Close()
+	result, err := h.service.ImportCSV(c.Request.Context(), f)
+	if err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	gmOK(c, result)
+}
+
 func NewKnowledgeHandler(service *knowledgeapp.Service, jobs *knowledgeapp.ClassificationJobService, settings *settingsapp.Service) *KnowledgeHandler {
 	return &KnowledgeHandler{service: service, jobs: jobs, settings: settings}
 }
@@ -161,6 +205,46 @@ func (h *KnowledgeHandler) canUseEmbedding(c *gin.Context) bool {
 
 type AdminSessionHandler struct {
 	service *sessionapp.Service
+}
+
+// GMList returns retained conversations in Web-GM-Client's table format.
+func (h *AdminSessionHandler) GMList(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("pageNum", c.DefaultQuery("page", "1")))
+	size, _ := strconv.Atoi(c.DefaultQuery("pageSize", c.DefaultQuery("size", "20")))
+	total, items, err := h.service.AdminList(c.Request.Context(), session.ListQuery{
+		SessionID:      c.Query("session_id"),
+		Q:              c.Query("q"),
+		Page:           page,
+		Size:           size,
+		Status:         c.Query("status"),
+		ExternalUserID: c.Query("caller_user_id"),
+		ChannelID:      c.Query("channel_id"),
+		TenantID:       c.Query("tenant_id"),
+		CreatedFrom:    parseRFC3339Query(c.Query("created_from")),
+		CreatedTo:      parseRFC3339Query(c.Query("created_to")),
+	})
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, gin.H{"list": items, "total": total})
+}
+
+func (h *AdminSessionHandler) GMGet(c *gin.Context) {
+	meta, messages, err := h.service.AdminGet(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		gmError(c, http.StatusNotFound, err.Error())
+		return
+	}
+	gmOK(c, gin.H{"session": meta, "messages": messages, "message_count": len(messages)})
+}
+
+func gmOK(c *gin.Context, data any) {
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
+}
+
+func gmError(c *gin.Context, status int, message string) {
+	c.JSON(status, gin.H{"code": status, "err": message})
 }
 
 func NewAdminSessionHandler(service *sessionapp.Service) *AdminSessionHandler {
