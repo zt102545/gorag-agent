@@ -85,7 +85,9 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	ragService.SetUseVectorForSearch(runtime.ResolveEmbeddingConfig(ctx).UseVectorForSearch)
 
 	instruction := runtime.GetPromptContent(ctx, admin.PromptAgentInstruction, agent.CustomerServiceInstruction)
-	customerAgent, err := agent.NewCustomerServiceAgent(ctx, chatModel, ragService, instruction)
+	customerAgent, err := agent.NewCustomerServiceAgent(ctx, chatModel, ragService, instruction, func(ctx context.Context) string {
+		return runtime.GetPromptContent(ctx, admin.PromptChatHandoff, "")
+	})
 	if err != nil {
 		_ = vs.Close()
 		_ = redisClient.Close()

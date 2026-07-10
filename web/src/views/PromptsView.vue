@@ -27,7 +27,22 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <el-input v-model="editors[p.key]" type="textarea" :rows="16" />
+        <template v-if="p.key === 'chat_handoff'">
+          <div class="rich-toolbar">
+            <el-button size="small" @click="formatRich('bold')">Bold</el-button>
+            <el-button size="small" @click="formatRich('insertUnorderedList')">List</el-button>
+            <el-button size="small" @click="insertImageUrl(p.key)">Insert image URL</el-button>
+          </div>
+          <div
+            :ref="(el) => setRichEditorRef(p.key, el)"
+            class="rich-editor"
+            contenteditable="true"
+            @input="syncRichEditor(p.key)"
+          ></div>
+          <div class="rich-preview-title">Preview</div>
+          <div class="rich-preview" v-html="sanitizeRichText(editors[p.key] || '')"></div>
+        </template>
+        <el-input v-else v-model="editors[p.key]" type="textarea" :rows="16" />
         <div class="actions">
           <el-button v-if="auth.isAdmin" type="primary" :loading="saving === p.key" @click="save(p.key)">保存</el-button>
           <el-tag v-else type="info">仅管理员可修改</el-tag>
@@ -38,10 +53,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import * as api from '@/api/admin'
+import { sanitizeRichText } from '@/utils/richText'
 
 interface PromptMeta {
   title: string
@@ -142,6 +159,7 @@ const saving = ref('')
 const prompts = ref<any[]>([])
 const editors = reactive<Record<string, string>>({})
 const active = ref('')
+const richEditors = new Map<string, HTMLElement>()
 
 function promptMeta(key: string): PromptMeta {
   return promptMetas[key] || fallbackMeta
@@ -158,19 +176,72 @@ async function load() {
     if (!active.value && prompts.value.length) {
       active.value = prompts.value[0].key
     }
+    await nextTick()
+    refreshRichEditors()
   } finally {
     loading.value = false
   }
 }
 
 async function save(key: string) {
+  syncRichEditor(key)
   saving.value = key
   try {
-    await api.updatePrompt(key, editors[key] || '')
+    const content = key === 'chat_handoff' ? sanitizeRichText(editors[key] || '') : editors[key] || ''
+    await api.updatePrompt(key, content)
+    editors[key] = content
+    refreshRichEditors()
     ElMessage.success('已保存')
   } finally {
     saving.value = ''
   }
+}
+
+function setRichEditorRef(key: string, el: Element | ComponentPublicInstance | null) {
+  if (el instanceof HTMLElement) {
+    richEditors.set(key, el)
+    if (el.innerHTML !== (editors[key] || '')) {
+      el.innerHTML = sanitizeRichText(editors[key] || '')
+    }
+  } else {
+    richEditors.delete(key)
+  }
+}
+
+function refreshRichEditors() {
+  richEditors.forEach((el, key) => {
+    const content = sanitizeRichText(editors[key] || '')
+    if (el.innerHTML !== content) el.innerHTML = content
+  })
+}
+
+function syncRichEditor(key: string) {
+  const el = richEditors.get(key)
+  if (!el) return
+  editors[key] = el.innerHTML
+}
+
+function formatRich(command: 'bold' | 'insertUnorderedList') {
+  document.execCommand(command)
+  syncRichEditor('chat_handoff')
+}
+
+function insertImageUrl(key: string) {
+  const url = window.prompt('Public image URL, starting with http:// or https://')
+  if (!url) return
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      ElMessage.warning('Only http:// or https:// image URLs are supported')
+      return
+    }
+  } catch {
+    ElMessage.warning('Invalid image URL')
+    return
+  }
+  const escaped = url.replace(/"/g, '&quot;')
+  document.execCommand('insertHTML', false, `<img src="${escaped}" alt="">`)
+  syncRichEditor(key)
 }
 
 onMounted(load)
@@ -210,5 +281,47 @@ onMounted(load)
 
 .actions {
   margin-top: 12px;
+}
+
+.rich-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.rich-editor,
+.rich-preview {
+  min-height: 220px;
+  padding: 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.rich-editor:focus {
+  border-color: #409eff;
+  outline: none;
+}
+
+.rich-editor :deep(img),
+.rich-preview :deep(img) {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin: 8px 0;
+  border-radius: 6px;
+}
+
+.rich-preview-title {
+  margin: 12px 0 6px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.rich-preview {
+  min-height: 80px;
+  background: #f8fafc;
 }
 </style>

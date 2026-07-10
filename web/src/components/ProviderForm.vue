@@ -50,12 +50,6 @@
         <el-form-item label="API Key">
           <el-input v-model="form.api_key" type="password" show-password :placeholder="maskHint" />
         </el-form-item>
-        <el-form-item v-if="kind === 'chat'" label="Temperature">
-          <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" />
-        </el-form-item>
-        <el-form-item v-if="kind === 'chat'" label="Max Tokens">
-          <el-input-number v-model="form.max_tokens" :min="1" :step="128" />
-        </el-form-item>
         <el-form-item v-if="kind === 'embedding'" label="Dimensions">
           <el-input-number v-model="form.dimensions" :min="1" :step="64" />
         </el-form-item>
@@ -93,8 +87,6 @@ const form = reactive({
   base_url: '',
   model_name: '',
   api_key: '',
-  temperature: 0.7,
-  max_tokens: 2048,
   dimensions: 1536,
   use_vector_for_search: false,
 })
@@ -141,8 +133,6 @@ function resetForm() {
     base_url: '',
     model_name: '',
     api_key: '',
-    temperature: 0.7,
-    max_tokens: 2048,
     dimensions: 1536,
     use_vector_for_search: false,
   })
@@ -163,8 +153,6 @@ function openEdit(row: api.ProviderProfile) {
     base_url: row.base_url || '',
     model_name: row.model_name || '',
     api_key: '',
-    temperature: row.temperature ?? 0.7,
-    max_tokens: row.max_tokens ?? 2048,
     dimensions: row.dimensions ?? 1536,
     use_vector_for_search: row.use_vector_for_search ?? false,
   })
@@ -188,6 +176,8 @@ async function save() {
   try {
     const payload: any = { ...form }
     if (!payload.api_key) delete payload.api_key
+    delete payload.temperature
+    delete payload.max_tokens
     if (editing.value?.id) {
       await api.updateProviderProfile(props.kind, editing.value.id, payload)
     } else {

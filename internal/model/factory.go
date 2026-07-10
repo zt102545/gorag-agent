@@ -27,17 +27,10 @@ func NewChatModel(ctx context.Context, cfg config.ChatModelConfig) (model.ToolCa
 	}
 	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
 	case "openai", "openai_compatible", "openai-compatible", "compatible", "longcat":
-		temp := cfg.Temperature
-		var maxTokens *int
-		if cfg.MaxTokens > 0 {
-			maxTokens = &cfg.MaxTokens
-		}
 		return openaiModel.NewChatModel(ctx, &openaiModel.ChatModelConfig{
-			BaseURL:     cfg.BaseURL,
-			APIKey:      cfg.APIKey,
-			Model:       cfg.ModelName,
-			Temperature: &temp,
-			MaxTokens:   maxTokens,
+			BaseURL: cfg.BaseURL,
+			APIKey:  cfg.APIKey,
+			Model:   cfg.ModelName,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported chat model provider: %s", cfg.Provider)

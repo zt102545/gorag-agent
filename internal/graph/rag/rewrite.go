@@ -32,9 +32,6 @@ func needsRewrite(content string) bool {
 	if content == "" {
 		return false
 	}
-	if len([]rune(content)) <= 8 {
-		return true
-	}
 	for _, marker := range rewriteMarkers {
 		if strings.Contains(content, marker) {
 			return true

@@ -13,7 +13,7 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
 )
 
-func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingChatModel, ragService *rag.Service, instruction string) (adk.Agent, error) {
+func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingChatModel, ragService *rag.Service, instruction string, resolveHandoffReply func(context.Context) string) (adk.Agent, error) {
 	if instruction == "" {
 		instruction = CustomerServiceInstruction
 	}
@@ -21,7 +21,7 @@ func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingCha
 	if err != nil {
 		return nil, fmt.Errorf("create rag tool: %w", err)
 	}
-	transferTool, err := agenttools.NewTransferHumanTool()
+	transferTool, err := agenttools.NewTransferHumanTool(resolveHandoffReply)
 	if err != nil {
 		return nil, fmt.Errorf("create transfer tool: %w", err)
 	}

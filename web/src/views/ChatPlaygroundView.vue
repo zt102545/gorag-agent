@@ -79,11 +79,11 @@
           <div v-if="messages.length === 0" class="empty">选择 Token 并创建或加载会话后即可测试客服回复。</div>
           <div v-for="(m, i) in messages" :key="i" class="bubble" :class="m.role">
             <div class="role">{{ roleLabel(m.role) }}</div>
-            <div class="content">{{ m.content }}</div>
+            <div class="content" v-html="sanitizeRichText(m.content)"></div>
           </div>
           <div v-if="sending" class="bubble assistant typing">
             <div class="role">助手</div>
-            <div class="content">{{ streaming || '思考中...' }}</div>
+            <div class="content" v-html="sanitizeRichText(streaming || '思考中...')"></div>
           </div>
         </div>
 
@@ -113,6 +113,7 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as adminApi from '@/api/admin'
+import { sanitizeRichText } from '@/utils/richText'
 import {
   closeBizSession,
   createBizSession,
@@ -561,6 +562,16 @@ onMounted(loadTokens)
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
+}
+.content :deep(img) {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  margin: 8px 0;
+  border-radius: 6px;
+}
+.content :deep(a) {
+  color: #2563eb;
 }
 .interrupt-bar {
   display: flex;

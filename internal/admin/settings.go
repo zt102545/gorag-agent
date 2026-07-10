@@ -614,14 +614,7 @@ func applyProviderProfileRequest(row *db.AIProviderProfile, kind string, req Upd
 	if req.APIKey != nil {
 		row.APIKey = *req.APIKey
 	}
-	if kind == ProviderKindChat {
-		if req.Temperature != nil {
-			row.Temperature = *req.Temperature
-		}
-		if req.MaxTokens != nil {
-			row.MaxTokens = *req.MaxTokens
-		}
-	} else if kind == ProviderKindEmbedding {
+	if kind == ProviderKindEmbedding {
 		if req.Dimensions != nil {
 			row.Dimensions = *req.Dimensions
 		}

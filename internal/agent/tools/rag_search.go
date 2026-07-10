@@ -3,10 +3,10 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cloudwego/eino/compose"
 
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
 )
@@ -29,16 +29,15 @@ type TransferInput struct {
 	Summary string `json:"summary" jsonschema:"description=当前对话摘要"`
 }
 
-func NewTransferHumanTool() (tool.InvokableTool, error) {
+func NewTransferHumanTool(resolveHandoffReply func(context.Context) string) (tool.InvokableTool, error) {
 	return utils.InferTool("transfer_human", "将用户转接给人工客服", func(ctx context.Context, input *TransferInput) (string, error) {
-		if isResume, hasData, approved := compose.GetResumeContext[bool](ctx); isResume && hasData {
-			if approved {
-				return fmt.Sprintf("已转接人工客服。原因：%s", input.Reason), nil
-			}
-			return "用户取消了转人工请求，将继续由智能客服提供服务。", nil
+		reply := ""
+		if resolveHandoffReply != nil {
+			reply = strings.TrimSpace(resolveHandoffReply(ctx))
 		}
-
-		message := fmt.Sprintf("用户请求转人工。原因：%s；摘要：%s。是否批准转接？", input.Reason, input.Summary)
-		return "", compose.Interrupt(ctx, message)
+		if reply == "" {
+			return fmt.Sprintf("已为你记录人工客服诉求，请稍候。原因：%s", input.Reason), nil
+		}
+		return reply, nil
 	})
 }

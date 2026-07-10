@@ -31,7 +31,7 @@
           <span v-if="message.request_id">RequestID: {{ message.request_id }}</span>
           <span v-if="message.client_message_id">ClientMessageID: {{ message.client_message_id }}</span>
         </div>
-        <div class="content">{{ message.content || '-' }}</div>
+        <div class="content" v-html="sanitizeRichText(message.content || '-')"></div>
 
         <div v-if="traceSteps(message).length" class="trace-block">
           <div class="section-title small">执行流程</div>
@@ -73,6 +73,7 @@
 
 <script setup lang="ts">
 import type { SessionDetail, SessionMessage } from '../types'
+import { sanitizeRichText } from '@/utils/richText'
 
 interface TraceStep {
   name?: string
@@ -239,6 +240,16 @@ function formatJson(value: unknown) {
 .content {
   white-space: pre-wrap;
   line-height: 1.6;
+}
+.content :deep(img) {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  margin: 8px 0;
+  border-radius: 6px;
+}
+.content :deep(a) {
+  color: #2563eb;
 }
 .trace-block,
 .extra-block {
