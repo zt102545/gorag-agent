@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"github.com/yourorg/agent_customer_service/internal/admin"
@@ -10,6 +12,33 @@ import (
 
 type SettingsHandler struct {
 	settings *settingsapp.Service
+}
+
+// GMListPrompts exposes every prompt configuration in the external GM format.
+func (h *SettingsHandler) GMListPrompts(c *gin.Context) {
+	rows, err := h.settings.ListPrompts(c.Request.Context())
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, rows)
+}
+
+// GMUpdatePrompt updates one prompt without altering the native admin API.
+func (h *SettingsHandler) GMUpdatePrompt(c *gin.Context) {
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	row, err := h.settings.UpdatePrompt(c.Request.Context(), c.Param("key"), req.Content)
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, row)
 }
 
 func NewSettingsHandler(settings *settingsapp.Service) *SettingsHandler {

@@ -103,25 +103,6 @@ func JWTAuth(authSvc *auth.Service) gin.HandlerFunc {
 	}
 }
 
-// GMIntegrationAuth protects the GM compatibility API. It is deliberately
-// separate from the service's admin JWT because the external GM console owns
-// its own login session and token format.
-func GMIntegrationAuth(integrationKey string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if integrationKey == "" {
-			response.Error(c, http.StatusServiceUnavailable, "GM integration is not configured")
-			c.Abort()
-			return
-		}
-		if c.GetHeader("X-GM-API-Key") != integrationKey {
-			response.Error(c, http.StatusUnauthorized, "invalid GM integration key")
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
-}
-
 func RequireRole(minRole string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		v, ok := c.Get(ClaimsKey)

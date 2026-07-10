@@ -20,7 +20,6 @@ type Config struct {
 	Database    DatabaseConfig    `mapstructure:"database"`
 	JWT         JWTConfig         `mapstructure:"jwt"`
 	Admin       AdminConfig       `mapstructure:"admin"`
-	GM          GMConfig          `mapstructure:"gm"`
 	Classify    ClassifyConfig    `mapstructure:"classify"`
 
 	// Legacy rag section for one-shot migration.
@@ -39,12 +38,6 @@ type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	Port string `mapstructure:"port"`
 	Mode string `mapstructure:"mode"`
-}
-
-// GMConfig holds credentials used by the external GM console integration.
-// Keep IntegrationKey in server-side environment variables in production.
-type GMConfig struct {
-	IntegrationKey string `mapstructure:"integration_key"`
 }
 
 type AIConfig struct {

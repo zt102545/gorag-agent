@@ -133,14 +133,6 @@ admin:
   password: admin123
 
 # =============================================================================
-# External GM console compatibility API
-# =============================================================================
-gm:
-  # Set GM_INTEGRATION_KEY in production. The GM web client sends it as
-  # X-GM-API-Key, ideally injected by a same-origin reverse proxy.
-  integration_key: ""
-
-# =============================================================================
 # QA 异步分类 Worker
 # =============================================================================
 classify:
