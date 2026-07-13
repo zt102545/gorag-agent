@@ -158,8 +158,12 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 	gm := r.Group("/api/v1/gm/ai-customer-service")
 	{
 		gm.GET("/qa", deps.KnowledgeHandler.GMList)
+		gm.GET("/qa/categories", deps.KnowledgeHandler.GMCategories)
+		gm.GET("/qa/tags", deps.KnowledgeHandler.GMTags)
 		gm.POST("/qa", deps.KnowledgeHandler.GMCreate)
 		gm.POST("/qa/import", deps.KnowledgeHandler.GMImport)
+		gm.POST("/qa/batch-delete", deps.KnowledgeHandler.GMBatchDelete)
+		gm.PUT("/qa/:id", deps.KnowledgeHandler.GMUpdate)
 		gm.DELETE("/qa/:id", deps.KnowledgeHandler.GMDelete)
 		gm.GET("/sessions", deps.AdminSessionHandler.GMList)
 		gm.GET("/sessions/:id", deps.AdminSessionHandler.GMGet)

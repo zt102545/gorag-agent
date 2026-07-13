@@ -41,6 +41,26 @@ func (h *KnowledgeHandler) GMList(c *gin.Context) {
 	gmOK(c, gin.H{"list": result.Items, "total": result.Total})
 }
 
+// GMCategories returns all non-empty QA categories for the GM filter.
+func (h *KnowledgeHandler) GMCategories(c *gin.Context) {
+	categories, err := h.service.ListCategories(c.Request.Context())
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, categories)
+}
+
+// GMTags returns all non-empty QA tags for the GM filter.
+func (h *KnowledgeHandler) GMTags(c *gin.Context) {
+	tags, err := h.service.ListTags(c.Request.Context())
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, tags)
+}
+
 // GMImport imports a CSV QA file using the GM response envelope.
 func (h *KnowledgeHandler) GMImport(c *gin.Context) {
 	if !h.canUseEmbedding(c) {
@@ -84,6 +104,24 @@ func (h *KnowledgeHandler) GMCreate(c *gin.Context) {
 	gmOK(c, item)
 }
 
+// GMUpdate updates a single QA item and rebuilds its vector index entry.
+func (h *KnowledgeHandler) GMUpdate(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
+	var req qa.UpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.service.Update(c.Request.Context(), c.Param("id"), req)
+	if err != nil {
+		gmError(c, http.StatusNotFound, err.Error())
+		return
+	}
+	gmOK(c, item)
+}
+
 // GMDelete removes both the QA metadata and its vector index entry.
 func (h *KnowledgeHandler) GMDelete(c *gin.Context) {
 	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
@@ -91,6 +129,29 @@ func (h *KnowledgeHandler) GMDelete(c *gin.Context) {
 		return
 	}
 	gmOK(c, gin.H{"deleted": true})
+}
+
+// GMBatchDelete deletes up to 200 QA items in one request. Individual failures
+// are returned so the GM can refresh the list and report a partial result.
+func (h *KnowledgeHandler) GMBatchDelete(c *gin.Context) {
+	var req struct {
+		IDs []string `json:"ids" binding:"required,min=1,max=200,dive,required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	deleted := 0
+	failed := make([]gin.H, 0)
+	for _, id := range req.IDs {
+		if err := h.service.Delete(c.Request.Context(), id); err != nil {
+			failed = append(failed, gin.H{"id": id, "error": err.Error()})
+			continue
+		}
+		deleted++
+	}
+	gmOK(c, gin.H{"deleted": deleted, "failed": failed})
 }
 
 func NewKnowledgeHandler(service *knowledgeapp.Service, jobs *knowledgeapp.ClassificationJobService, settings *settingsapp.Service) *KnowledgeHandler {
