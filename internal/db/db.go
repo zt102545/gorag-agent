@@ -76,7 +76,13 @@ func applyPoolDefaults(sqlDB *sql.DB, cfg config.DatabaseConfig) {
 }
 
 func AutoMigrate(gdb *gorm.DB) error {
-	return gdb.AutoMigrate(
+	return gdb.AutoMigrate(Models()...)
+}
+
+// Models returns every model stored in the business database. Keep this list as
+// the single source of truth for schema creation and cross-database migration.
+func Models() []any {
+	return []any{
 		&AdminUser{},
 		&CallerToken{},
 		&QAItem{},
@@ -90,5 +96,5 @@ func AutoMigrate(gdb *gorm.DB) error {
 		&AIErrorLog{},
 		&Session{},
 		&Message{},
-	)
+	}
 }

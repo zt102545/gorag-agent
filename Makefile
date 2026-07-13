@@ -1,4 +1,4 @@
-.PHONY: run build indexer test docker-up docker-down
+.PHONY: run build indexer migrate test docker-up docker-down
 
 APP_ENV ?= local
 
@@ -8,9 +8,13 @@ run:
 build:
 	go build -o bin/server ./cmd/server
 	go build -o bin/indexer ./cmd/indexer
+	go build -o bin/migrate ./cmd/migrate
 
 indexer:
 	go run ./cmd/indexer --file ./data/knowledge/qa.csv
+
+migrate:
+	go run ./cmd/migrate
 
 test:
 	go test ./...
