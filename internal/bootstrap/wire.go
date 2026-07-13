@@ -18,6 +18,7 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/observability"
 	"github.com/yourorg/agent_customer_service/internal/server"
 	"github.com/yourorg/agent_customer_service/internal/server/handler"
+	"github.com/yourorg/agent_customer_service/internal/server/middleware"
 	"github.com/yourorg/agent_customer_service/internal/vectorstore"
 	"github.com/yourorg/agent_customer_service/pkg/sse"
 )
@@ -43,6 +44,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	}
 
 	authSvc := auth.NewService(gdb, cfg.JWT)
+	publicLimiter := middleware.NewPublicIPLimiter(redisClient)
 	aiErrorSvc := admin.NewAIErrorService(gdb)
 	if err := authSvc.SeedAdmin(ctx, cfg.Admin.Username, cfg.Admin.Password); err != nil {
 		_ = redisClient.Close()
@@ -106,11 +108,12 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		KnowledgeHandler:    handler.NewKnowledgeHandler(knowledgeApp, knowledgeJobs, settingsApp),
 		AuthHandler:         handler.NewAuthHandler(authSvc),
 		UserHandler:         handler.NewUserHandler(authSvc),
-		CallerTokenHandler:  handler.NewCallerTokenHandler(authSvc),
+		CallerTokenHandler:  handler.NewCallerTokenHandler(authSvc, publicLimiter),
 		SettingsHandler:     handler.NewSettingsHandler(settingsApp),
 		AdminSessionHandler: handler.NewAdminSessionHandler(sessionApp),
 		AIErrorHandler:      handler.NewAIErrorHandler(aiErrorSvc),
 		UnansweredHandler:   handler.NewUnansweredHandler(unansweredService, knowledgeApp),
+		PublicLimiter:       publicLimiter,
 	})
 
 	cleanup := func() {

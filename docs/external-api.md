@@ -4,9 +4,9 @@
 
 > **历史消息说明**：`GET /sessions/:id/history` 的每条消息除 `role`、`content` 外，实际还可能返回 `id`、`request_id`、`client_message_id`、`extra` 与 `created_at` 等元数据。
 
-本文面向外部接入方，按当前唯一上线方案说明：
+本文面向外部接入方，说明公开控件短期 Token、服务端换票 Token 和旧 Caller Token 三种兼容鉴权方式：
 
-- 仅支持 `caller token`
+- H5 QA 客服推荐使用公开控件模式
 - 支持有状态会话问答
 - 接口方自行决定继续既有会话还是重新创建新会话
 - 提供无状态问答作为补充能力
@@ -41,7 +41,7 @@ Idempotency-Key: idem_20260708_001
 
 ## 鉴权说明
 
-当前只支持 `caller token`：
+Biz API 支持短期用户 Token 和旧 `caller token`：
 
 - `Authorization: Bearer <caller_token>`
 - 或 `X-Caller-Token: <caller_token>`
@@ -103,6 +103,22 @@ Authorization: Bearer <caller_token>
 - 示例：`idem_20260708_001`
 
 ## 用户级短期凭证
+
+### 公开控件 Token（H5 QA 客服推荐）
+
+GM 为渠道开启“公开控件”后，浏览器可直接申请约 15 分钟有效的短期 Token，不需要 App Secret：
+
+```http
+POST https://testapi.realcopyright.cn/api/v1/biz/auth/public-token
+Origin: https://www.example.com
+Content-Type: application/json
+
+{"channel_id":"website-main","caller_user_id":"user_10001"}
+```
+
+服务端会检查渠道状态、允许来源、每 IP 每分钟限制和每日配额。`caller_user_id` 仅用于会话隔离，不代表可信身份。完整接入方式见 [`h5-chat-widget.md`](h5-chat-widget.md)。
+
+### 服务端换票 Token
 
 生产渠道先在 GM 创建接入应用，取得 `app_id` 和 `app_secret`。`app_secret` 只能由渠道服务端保存；渠道服务端确认当前登录用户后，调用 `POST /api/v1/biz/auth/token` 换取默认 15 分钟有效的用户 Token。请求字段为 `app_id`、`app_secret`、`caller_user_id`，以及可选的 `channel_id`、`tenant_id`。
 

@@ -38,20 +38,24 @@ type Service struct {
 }
 
 type CallerIdentity struct {
-	TokenID      string
-	Name         string
-	CallerUserID string
-	ChannelID    string
-	TenantID     string
-	AuthType     string
+	TokenID         string
+	Name            string
+	CallerUserID    string
+	ChannelID       string
+	TenantID        string
+	AuthType        string
+	IPRatePerMinute int
+	IPDailyQuota    int
 }
 
 type UserTokenClaims struct {
-	AppID        string `json:"app_id"`
-	CallerUserID string `json:"caller_user_id"`
-	ChannelID    string `json:"channel_id,omitempty"`
-	TenantID     string `json:"tenant_id,omitempty"`
-	TokenType    string `json:"token_type"`
+	AppID           string `json:"app_id"`
+	CallerUserID    string `json:"caller_user_id"`
+	ChannelID       string `json:"channel_id,omitempty"`
+	TenantID        string `json:"tenant_id,omitempty"`
+	TokenType       string `json:"token_type"`
+	IPRatePerMinute int    `json:"ip_rate_per_minute,omitempty"`
+	IPDailyQuota    int    `json:"ip_daily_quota,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -245,33 +249,54 @@ func generateSecret(prefix string, size int) (string, error) {
 }
 
 type CreateCallerTokenRequest struct {
-	Name      string     `json:"name" binding:"required"`
-	ChannelID string     `json:"channel_id"`
-	TenantID  string     `json:"tenant_id"`
-	Remark    string     `json:"remark"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Name            string     `json:"name" binding:"required"`
+	ChannelID       string     `json:"channel_id"`
+	TenantID        string     `json:"tenant_id"`
+	Remark          string     `json:"remark"`
+	ExpiresAt       *time.Time `json:"expires_at"`
+	PublicAccess    bool       `json:"public_access"`
+	AllowedOrigins  []string   `json:"allowed_origins"`
+	IPRatePerMinute int        `json:"ip_rate_per_minute"`
+	IPDailyQuota    int        `json:"ip_daily_quota"`
 }
 
 func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRequest) (plain string, row *db.CallerToken, err error) {
+	channelID := strings.TrimSpace(req.ChannelID)
+	if req.PublicAccess && channelID == "" {
+		return "", nil, fmt.Errorf("channel_id is required for public access")
+	}
+	if req.PublicAccess {
+		if err := s.ensurePublicChannelAvailable(ctx, channelID, ""); err != nil {
+			return "", nil, err
+		}
+	}
+	if req.IPRatePerMinute < 0 || req.IPDailyQuota < 0 {
+		return "", nil, fmt.Errorf("public widget limits cannot be negative")
+	}
+	ratePerMinute, dailyQuota := publicLimitDefaults(req.IPRatePerMinute, req.IPDailyQuota)
 	plain, err = generateSecret("as_", 24)
 	if err != nil {
 		return "", nil, err
 	}
 	row = &db.CallerToken{
-		ID:            uuid.NewString(),
-		Name:          strings.TrimSpace(req.Name),
-		TokenHash:     HashSecret(plain), // legacy compatibility
-		PlainToken:    "",
-		Prefix:        plain[:10],
-		AppID:         "app_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
-		AppSecretHash: HashSecret(plain),
-		ChannelID:     strings.TrimSpace(req.ChannelID),
-		TenantID:      strings.TrimSpace(req.TenantID),
-		Enabled:       true,
-		Remark:        strings.TrimSpace(req.Remark),
-		ExpiresAt:     req.ExpiresAt,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		ID:              uuid.NewString(),
+		Name:            strings.TrimSpace(req.Name),
+		TokenHash:       HashSecret(plain), // legacy compatibility
+		PlainToken:      "",
+		Prefix:          plain[:10],
+		AppID:           "app_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		AppSecretHash:   HashSecret(plain),
+		ChannelID:       channelID,
+		TenantID:        strings.TrimSpace(req.TenantID),
+		Enabled:         true,
+		Remark:          strings.TrimSpace(req.Remark),
+		ExpiresAt:       req.ExpiresAt,
+		PublicAccess:    req.PublicAccess,
+		AllowedOrigins:  normalizeOrigins(req.AllowedOrigins),
+		IPRatePerMinute: ratePerMinute,
+		IPDailyQuota:    dailyQuota,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
 		return "", nil, err
@@ -285,6 +310,55 @@ type IssueUserTokenRequest struct {
 	CallerUserID string `json:"caller_user_id" binding:"required"`
 	ChannelID    string `json:"channel_id"`
 	TenantID     string `json:"tenant_id"`
+}
+
+type IssuePublicUserTokenRequest struct {
+	CallerUserID string `json:"caller_user_id" binding:"required"`
+	ChannelID    string `json:"channel_id" binding:"required"`
+}
+
+type PublicTokenPolicy struct {
+	ChannelID       string
+	IPRatePerMinute int
+	IPDailyQuota    int
+}
+
+func (s *Service) IssuePublicUserToken(ctx context.Context, req IssuePublicUserTokenRequest, origin string) (string, time.Time, PublicTokenPolicy, error) {
+	callerUserID := strings.TrimSpace(req.CallerUserID)
+	channelID := strings.TrimSpace(req.ChannelID)
+	if callerUserID == "" || channelID == "" {
+		return "", time.Time{}, PublicTokenPolicy{}, fmt.Errorf("caller_user_id and channel_id are required")
+	}
+
+	var apps []db.CallerToken
+	if err := s.db.WithContext(ctx).Where("channel_id = ? AND public_access = ? AND enabled = ?", channelID, true, true).Limit(2).Find(&apps).Error; err != nil {
+		return "", time.Time{}, PublicTokenPolicy{}, err
+	}
+	if len(apps) != 1 {
+		return "", time.Time{}, PublicTokenPolicy{}, fmt.Errorf("public channel is unavailable")
+	}
+	app := apps[0]
+	if app.ExpiresAt != nil && app.ExpiresAt.Before(time.Now()) {
+		return "", time.Time{}, PublicTokenPolicy{}, fmt.Errorf("public channel is unavailable")
+	}
+	if !originAllowed(app.AllowedOrigins, origin) {
+		return "", time.Time{}, PublicTokenPolicy{}, fmt.Errorf("origin is not allowed for this channel")
+	}
+
+	ratePerMinute, dailyQuota := publicLimitDefaults(app.IPRatePerMinute, app.IPDailyQuota)
+	now := time.Now()
+	expiresAt := now.Add(15 * time.Minute)
+	claims := UserTokenClaims{
+		AppID: app.AppID, CallerUserID: callerUserID, ChannelID: app.ChannelID, TenantID: app.TenantID,
+		TokenType: "public_widget", IPRatePerMinute: ratePerMinute, IPDailyQuota: dailyQuota,
+		RegisteredClaims: jwt.RegisteredClaims{Issuer: "agent-customer-service", Subject: callerUserID, Audience: jwt.ClaimStrings{"biz-api"}, IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now.Add(-30 * time.Second)), ExpiresAt: jwt.NewNumericDate(expiresAt), ID: uuid.NewString()},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(s.cfg.Secret))
+	if err != nil {
+		return "", time.Time{}, PublicTokenPolicy{}, err
+	}
+	_ = s.db.WithContext(ctx).Model(&app).Update("last_used_at", now).Error
+	return token, expiresAt, PublicTokenPolicy{ChannelID: app.ChannelID, IPRatePerMinute: ratePerMinute, IPDailyQuota: dailyQuota}, nil
 }
 
 func (s *Service) IssueUserToken(ctx context.Context, req IssueUserTokenRequest) (string, time.Time, error) {
@@ -341,7 +415,7 @@ func (s *Service) validateUserToken(raw string) (*CallerIdentity, error) {
 		return nil, err
 	}
 	claims, ok := token.Claims.(*UserTokenClaims)
-	if !ok || !token.Valid || claims.TokenType != "biz_user" || claims.CallerUserID == "" || claims.AppID == "" {
+	if !ok || !token.Valid || (claims.TokenType != "biz_user" && claims.TokenType != "public_widget") || claims.CallerUserID == "" || claims.AppID == "" {
 		return nil, fmt.Errorf("invalid user token")
 	}
 	var app db.CallerToken
@@ -351,7 +425,20 @@ func (s *Service) validateUserToken(raw string) (*CallerIdentity, error) {
 	if app.ExpiresAt != nil && app.ExpiresAt.Before(time.Now()) {
 		return nil, fmt.Errorf("app credentials expired")
 	}
-	return &CallerIdentity{TokenID: app.ID, Name: app.Name, CallerUserID: claims.CallerUserID, ChannelID: claims.ChannelID, TenantID: claims.TenantID, AuthType: "user_token"}, nil
+	authType := "user_token"
+	ratePerMinute := claims.IPRatePerMinute
+	dailyQuota := claims.IPDailyQuota
+	if claims.TokenType == "public_widget" {
+		if !app.PublicAccess {
+			return nil, fmt.Errorf("public channel disabled")
+		}
+		if claims.ChannelID != app.ChannelID || claims.TenantID != app.TenantID {
+			return nil, fmt.Errorf("public channel scope changed")
+		}
+		ratePerMinute, dailyQuota = publicLimitDefaults(app.IPRatePerMinute, app.IPDailyQuota)
+		authType = "public_user_token"
+	}
+	return &CallerIdentity{TokenID: app.ID, Name: app.Name, CallerUserID: claims.CallerUserID, ChannelID: claims.ChannelID, TenantID: claims.TenantID, AuthType: authType, IPRatePerMinute: ratePerMinute, IPDailyQuota: dailyQuota}, nil
 }
 
 func (s *Service) ListCallerTokens(ctx context.Context) ([]db.CallerToken, error) {
@@ -361,17 +448,44 @@ func (s *Service) ListCallerTokens(ctx context.Context) ([]db.CallerToken, error
 }
 
 type UpdateCallerTokenRequest struct {
-	Enabled   *bool      `json:"enabled"`
-	Name      *string    `json:"name"`
-	ChannelID *string    `json:"channel_id"`
-	TenantID  *string    `json:"tenant_id"`
-	Remark    *string    `json:"remark"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Enabled         *bool      `json:"enabled"`
+	Name            *string    `json:"name"`
+	ChannelID       *string    `json:"channel_id"`
+	TenantID        *string    `json:"tenant_id"`
+	Remark          *string    `json:"remark"`
+	ExpiresAt       *time.Time `json:"expires_at"`
+	PublicAccess    *bool      `json:"public_access"`
+	AllowedOrigins  *[]string  `json:"allowed_origins"`
+	IPRatePerMinute *int       `json:"ip_rate_per_minute"`
+	IPDailyQuota    *int       `json:"ip_daily_quota"`
 }
 
 func (s *Service) UpdateCallerToken(ctx context.Context, id string, req UpdateCallerTokenRequest) error {
+	var current db.CallerToken
+	if err := s.db.WithContext(ctx).First(&current, "id = ?", id).Error; err != nil {
+		return err
+	}
+	channelID := current.ChannelID
+	if req.ChannelID != nil {
+		channelID = strings.TrimSpace(*req.ChannelID)
+	}
+	publicAccess := current.PublicAccess
+	if req.PublicAccess != nil {
+		publicAccess = *req.PublicAccess
+	}
+	if publicAccess && channelID == "" {
+		return fmt.Errorf("channel_id is required for public access")
+	}
+	if publicAccess {
+		if err := s.ensurePublicChannelAvailable(ctx, channelID, id); err != nil {
+			return err
+		}
+	}
 	updates := map[string]any{
 		"updated_at": time.Now(),
+	}
+	if publicAccess && current.AppID == "" {
+		updates["app_id"] = "app_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	}
 	if req.Enabled != nil {
 		updates["enabled"] = *req.Enabled
@@ -391,7 +505,80 @@ func (s *Service) UpdateCallerToken(ctx context.Context, id string, req UpdateCa
 	if req.ExpiresAt != nil {
 		updates["expires_at"] = *req.ExpiresAt
 	}
+	if req.PublicAccess != nil {
+		updates["public_access"] = *req.PublicAccess
+	}
+	if req.AllowedOrigins != nil {
+		updates["allowed_origins"] = normalizeOrigins(*req.AllowedOrigins)
+	}
+	if req.IPRatePerMinute != nil {
+		if *req.IPRatePerMinute <= 0 {
+			return fmt.Errorf("ip_rate_per_minute must be greater than 0")
+		}
+		updates["ip_rate_per_minute"] = *req.IPRatePerMinute
+	}
+	if req.IPDailyQuota != nil {
+		if *req.IPDailyQuota <= 0 {
+			return fmt.Errorf("ip_daily_quota must be greater than 0")
+		}
+		updates["ip_daily_quota"] = *req.IPDailyQuota
+	}
 	return s.db.WithContext(ctx).Model(&db.CallerToken{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (s *Service) ensurePublicChannelAvailable(ctx context.Context, channelID, excludeID string) error {
+	query := s.db.WithContext(ctx).Model(&db.CallerToken{}).Where("channel_id = ? AND public_access = ?", channelID, true)
+	if excludeID != "" {
+		query = query.Where("id <> ?", excludeID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("public channel_id already exists")
+	}
+	return nil
+}
+
+func publicLimitDefaults(ratePerMinute, dailyQuota int) (int, int) {
+	if ratePerMinute <= 0 {
+		ratePerMinute = 60
+	}
+	if dailyQuota <= 0 {
+		dailyQuota = 2000
+	}
+	return ratePerMinute, dailyQuota
+}
+
+func normalizeOrigins(values []string) db.StringSlice {
+	seen := map[string]struct{}{}
+	result := make(db.StringSlice, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimRight(strings.TrimSpace(value), "/")
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func originAllowed(allowed []string, origin string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	origin = strings.TrimRight(strings.TrimSpace(origin), "/")
+	for _, value := range allowed {
+		if value == "*" || strings.EqualFold(strings.TrimRight(strings.TrimSpace(value), "/"), origin) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) DeleteCallerToken(ctx context.Context, id string) error {

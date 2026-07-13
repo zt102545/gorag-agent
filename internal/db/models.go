@@ -81,21 +81,25 @@ type AdminUser struct {
 func (AdminUser) TableName() string { return "admin_users" }
 
 type CallerToken struct {
-	ID            string     `gorm:"primaryKey;size:36" json:"id"`
-	Name          string     `gorm:"size:128;not null" json:"name"`
-	TokenHash     string     `gorm:"size:255;not null;index" json:"-"`
-	PlainToken    string     `gorm:"type:text" json:"caller_token,omitempty"`
-	Prefix        string     `gorm:"size:24;not null" json:"prefix"`
-	ChannelID     string     `gorm:"size:128;index" json:"channel_id,omitempty"`
-	TenantID      string     `gorm:"size:128;index" json:"tenant_id,omitempty"`
-	Enabled       bool       `gorm:"not null;default:true" json:"enabled"`
-	Remark        string     `gorm:"size:255" json:"remark"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
-	AppID         string     `gorm:"size:64;index" json:"app_id,omitempty"`
-	AppSecretHash string     `gorm:"size:255" json:"-"`
+	ID              string      `gorm:"primaryKey;size:36" json:"id"`
+	Name            string      `gorm:"size:128;not null" json:"name"`
+	TokenHash       string      `gorm:"size:255;not null;index" json:"-"`
+	PlainToken      string      `gorm:"type:text" json:"caller_token,omitempty"`
+	Prefix          string      `gorm:"size:24;not null" json:"prefix"`
+	ChannelID       string      `gorm:"size:128;index" json:"channel_id,omitempty"`
+	TenantID        string      `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	Enabled         bool        `gorm:"not null;default:true" json:"enabled"`
+	Remark          string      `gorm:"size:255" json:"remark"`
+	ExpiresAt       *time.Time  `json:"expires_at,omitempty"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	LastUsedAt      *time.Time  `json:"last_used_at,omitempty"`
+	AppID           string      `gorm:"size:64;index" json:"app_id,omitempty"`
+	AppSecretHash   string      `gorm:"size:255" json:"-"`
+	PublicAccess    bool        `gorm:"not null;default:false;index" json:"public_access"`
+	AllowedOrigins  StringSlice `gorm:"type:text" json:"allowed_origins,omitempty"`
+	IPRatePerMinute int         `gorm:"not null;default:60" json:"ip_rate_per_minute"`
+	IPDailyQuota    int         `gorm:"not null;default:2000" json:"ip_daily_quota"`
 }
 
 func (CallerToken) TableName() string { return "caller_tokens" }

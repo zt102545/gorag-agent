@@ -23,14 +23,16 @@ const (
 )
 
 type BizContext struct {
-	RequestID      string `json:"request_id,omitempty"`
-	CallerTokenID  string `json:"caller_token_id,omitempty"`
-	CallerName     string `json:"caller_name,omitempty"`
-	CallerUserID   string `json:"caller_user_id,omitempty"`
-	ChannelID      string `json:"channel_id,omitempty"`
-	TenantID       string `json:"tenant_id,omitempty"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"`
-	AuthType       string `json:"auth_type,omitempty"`
+	RequestID       string `json:"request_id,omitempty"`
+	CallerTokenID   string `json:"caller_token_id,omitempty"`
+	CallerName      string `json:"caller_name,omitempty"`
+	CallerUserID    string `json:"caller_user_id,omitempty"`
+	ChannelID       string `json:"channel_id,omitempty"`
+	TenantID        string `json:"tenant_id,omitempty"`
+	IdempotencyKey  string `json:"idempotency_key,omitempty"`
+	AuthType        string `json:"auth_type,omitempty"`
+	IPRatePerMinute int    `json:"ip_rate_per_minute,omitempty"`
+	IPDailyQuota    int    `json:"ip_daily_quota,omitempty"`
 }
 
 var (
@@ -75,6 +77,7 @@ func CORS() gin.HandlerFunc {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Request-ID,X-Caller-Token,X-Caller-User-Id,X-Channel-Id,X-Tenant-Id,Idempotency-Key,X-GM-API-Key")
+		c.Header("Access-Control-Expose-Headers", "X-Request-ID,X-RateLimit-Minute-Limit,X-RateLimit-Daily-Limit,Retry-After")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -141,7 +144,9 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 			bizCtx.AuthType = identity.AuthType
 			bizCtx.CallerTokenID = identity.TokenID
 			bizCtx.CallerName = identity.Name
-			if identity.AuthType == "user_token" {
+			bizCtx.IPRatePerMinute = identity.IPRatePerMinute
+			bizCtx.IPDailyQuota = identity.IPDailyQuota
+			if identity.AuthType == "user_token" || identity.AuthType == "public_user_token" {
 				bizCtx.CallerUserID = identity.CallerUserID
 				bizCtx.ChannelID = identity.ChannelID
 				bizCtx.TenantID = identity.TenantID
@@ -171,7 +176,9 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 			bizCtx.AuthType = identity.AuthType
 			bizCtx.CallerTokenID = identity.TokenID
 			bizCtx.CallerName = identity.Name
-			if identity.AuthType == "user_token" {
+			bizCtx.IPRatePerMinute = identity.IPRatePerMinute
+			bizCtx.IPDailyQuota = identity.IPDailyQuota
+			if identity.AuthType == "user_token" || identity.AuthType == "public_user_token" {
 				bizCtx.CallerUserID = identity.CallerUserID
 				bizCtx.ChannelID = identity.ChannelID
 				bizCtx.TenantID = identity.TenantID
@@ -193,12 +200,32 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 	}
 }
 
-func BizRateLimit() gin.HandlerFunc {
+func BizRateLimit(publicLimiter *PublicIPLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		biz := GetBizContext(c)
 		if biz == nil {
 			c.Next()
 			return
+		}
+		if biz.AuthType == "public_user_token" {
+			result, err := publicLimiter.Allow(c.Request.Context(), biz.ChannelID, c.ClientIP(), biz.IPRatePerMinute, biz.IPDailyQuota)
+			if err != nil {
+				response.Error(c, http.StatusServiceUnavailable, "public widget limiter unavailable")
+				c.Abort()
+				return
+			}
+			c.Header("X-RateLimit-Minute-Limit", strconv.Itoa(biz.IPRatePerMinute))
+			c.Header("X-RateLimit-Daily-Limit", strconv.Itoa(biz.IPDailyQuota))
+			if !result.Allowed {
+				c.Header("Retry-After", strconv.Itoa(result.RetryAfter))
+				message := "public widget IP rate limit exceeded"
+				if result.DailyLimited {
+					message = "public widget IP daily quota exceeded"
+				}
+				response.Error(c, http.StatusTooManyRequests, message)
+				c.Abort()
+				return
+			}
 		}
 		allowOrAbort(c, "auth:"+biz.CallerTokenID, 20, 40, "too many requests for caller")
 		if c.IsAborted() {
@@ -217,7 +244,7 @@ func BizRateLimit() gin.HandlerFunc {
 func BizSessionAccess(authSvc *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		biz := GetBizContext(c)
-		if c.Param("id") == "" || biz == nil || biz.AuthType != "user_token" {
+		if c.Param("id") == "" || biz == nil || (biz.AuthType != "user_token" && biz.AuthType != "public_user_token") {
 			c.Next()
 			return
 		}

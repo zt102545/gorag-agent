@@ -22,6 +22,7 @@ type Deps struct {
 	AdminSessionHandler *handler.AdminSessionHandler
 	AIErrorHandler      *handler.AIErrorHandler
 	UnansweredHandler   *handler.UnansweredHandler
+	PublicLimiter       *middleware.PublicIPLimiter
 }
 
 func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
@@ -30,14 +31,16 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 	}
 
 	r := gin.New()
+	_ = r.SetTrustedProxies([]string{"127.0.0.1", "::1"})
 	r.Use(gin.Recovery(), middleware.RequestID(), middleware.Logging(), middleware.CORS())
 
 	r.GET("/health", handler.Health)
 	r.GET("/api/v1/health", handler.Health)
 	r.GET("/customer-service-widget.js", handler.CustomerServiceWidget)
 	r.POST("/api/v1/biz/auth/token", deps.CallerTokenHandler.IssueUserToken)
+	r.POST("/api/v1/biz/auth/public-token", deps.CallerTokenHandler.IssuePublicUserToken)
 
-	biz := r.Group("/api/v1/biz", middleware.BizAuth(deps.Auth), middleware.BizRateLimit())
+	biz := r.Group("/api/v1/biz", middleware.BizAuth(deps.Auth), middleware.BizRateLimit(deps.PublicLimiter))
 	{
 		biz.POST("/chat/ask", deps.ChatHandler.Ask)
 		biz.GET("/users/:callerUserID/sessions", deps.SessionHandler.ListByUser)
@@ -182,7 +185,7 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 
 		// Test chat only needs a caller token. It reuses the same BizAuth, session
 		// persistence and chat pipeline as external callers.
-		test := gm.Group("/test", middleware.BizAuth(deps.Auth), middleware.BizRateLimit())
+		test := gm.Group("/test", middleware.BizAuth(deps.Auth), middleware.BizRateLimit(deps.PublicLimiter))
 		{
 			test.POST("/sessions", deps.SessionHandler.Create)
 			test.POST("/sessions/:id/chat", middleware.SessionSerial(), deps.ChatHandler.Chat)

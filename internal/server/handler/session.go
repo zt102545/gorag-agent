@@ -37,7 +37,7 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		Meta:           req.Meta,
 	}
 	if bizCtx != nil {
-		if bizCtx.AuthType == "user_token" {
+		if isScopedUserToken(bizCtx) {
 			params.ExternalUserID = bizCtx.CallerUserID
 			params.ChannelID = bizCtx.ChannelID
 			params.TenantID = bizCtx.TenantID
@@ -112,7 +112,7 @@ func (h *SessionHandler) ListByUser(c *gin.Context) {
 		return
 	}
 	bizCtx := middleware.GetBizContext(c)
-	if bizCtx != nil && bizCtx.AuthType == "user_token" {
+	if isScopedUserToken(bizCtx) {
 		if callerUserID != bizCtx.CallerUserID {
 			response.NotFound(c, "user sessions not found")
 			return
@@ -139,17 +139,21 @@ func (h *SessionHandler) ListByUser(c *gin.Context) {
 }
 
 func scopedValue(requested, bound string, biz *middleware.BizContext) string {
-	if biz != nil && biz.AuthType == "user_token" {
+	if isScopedUserToken(biz) {
 		return bound
 	}
 	return firstNonEmpty(requested, bound)
 }
 
 func scopedTokenID(biz *middleware.BizContext) string {
-	if biz != nil && biz.AuthType == "user_token" {
+	if isScopedUserToken(biz) {
 		return biz.CallerTokenID
 	}
 	return ""
+}
+
+func isScopedUserToken(biz *middleware.BizContext) bool {
+	return biz != nil && (biz.AuthType == "user_token" || biz.AuthType == "public_user_token")
 }
 
 func firstNonEmpty(values ...string) string {

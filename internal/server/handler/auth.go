@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -117,7 +118,8 @@ func (h *UserHandler) Delete(c *gin.Context) {
 }
 
 type CallerTokenHandler struct {
-	auth *auth.Service
+	auth          *auth.Service
+	publicLimiter *middleware.PublicIPLimiter
 }
 
 func (h *CallerTokenHandler) IssueUserToken(c *gin.Context) {
@@ -134,8 +136,51 @@ func (h *CallerTokenHandler) IssueUserToken(c *gin.Context) {
 	response.OK(c, gin.H{"access_token": token, "token_type": "Bearer", "expires_in": int(time.Until(expiresAt).Seconds()), "expires_at": expiresAt})
 }
 
-func NewCallerTokenHandler(authSvc *auth.Service) *CallerTokenHandler {
-	return &CallerTokenHandler{auth: authSvc}
+func (h *CallerTokenHandler) IssuePublicUserToken(c *gin.Context) {
+	var req auth.IssuePublicUserTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	preLimit, err := h.publicLimiter.Allow(c.Request.Context(), "__public-token__", c.ClientIP(), 120, 10000)
+	if err != nil {
+		response.Error(c, http.StatusServiceUnavailable, "public widget limiter unavailable")
+		return
+	}
+	if !preLimit.Allowed {
+		writePublicLimitError(c, preLimit)
+		return
+	}
+	token, expiresAt, policy, err := h.auth.IssuePublicUserToken(c.Request.Context(), req, c.GetHeader("Origin"))
+	if err != nil {
+		response.Error(c, http.StatusForbidden, err.Error())
+		return
+	}
+	limit, err := h.publicLimiter.Allow(c.Request.Context(), policy.ChannelID, c.ClientIP(), policy.IPRatePerMinute, policy.IPDailyQuota)
+	if err != nil {
+		response.Error(c, http.StatusServiceUnavailable, "public widget limiter unavailable")
+		return
+	}
+	if !limit.Allowed {
+		writePublicLimitError(c, limit)
+		return
+	}
+	c.Header("X-RateLimit-Minute-Limit", fmt.Sprintf("%d", policy.IPRatePerMinute))
+	c.Header("X-RateLimit-Daily-Limit", fmt.Sprintf("%d", policy.IPDailyQuota))
+	response.OK(c, gin.H{"access_token": token, "token_type": "Bearer", "expires_in": int(time.Until(expiresAt).Seconds()), "expires_at": expiresAt})
+}
+
+func writePublicLimitError(c *gin.Context, limit middleware.PublicLimitResult) {
+	c.Header("Retry-After", fmt.Sprintf("%d", limit.RetryAfter))
+	message := "public widget IP rate limit exceeded"
+	if limit.DailyLimited {
+		message = "public widget IP daily quota exceeded"
+	}
+	response.Error(c, http.StatusTooManyRequests, message)
+}
+
+func NewCallerTokenHandler(authSvc *auth.Service, publicLimiter *middleware.PublicIPLimiter) *CallerTokenHandler {
+	return &CallerTokenHandler{auth: authSvc, publicLimiter: publicLimiter}
 }
 
 func (h *CallerTokenHandler) Create(c *gin.Context) {
@@ -146,21 +191,25 @@ func (h *CallerTokenHandler) Create(c *gin.Context) {
 	}
 	plain, row, err := h.auth.CreateCallerToken(c.Request.Context(), req)
 	if err != nil {
-		response.InternalError(c, err.Error())
+		response.BadRequest(c, err.Error())
 		return
 	}
 	response.OK(c, gin.H{
-		"id":         row.ID,
-		"name":       row.Name,
-		"prefix":     row.Prefix,
-		"channel_id": row.ChannelID,
-		"tenant_id":  row.TenantID,
-		"enabled":    row.Enabled,
-		"remark":     row.Remark,
-		"expires_at": row.ExpiresAt,
-		"created_at": row.CreatedAt,
-		"app_id":     row.AppID,
-		"app_secret": plain,
+		"id":                 row.ID,
+		"name":               row.Name,
+		"prefix":             row.Prefix,
+		"channel_id":         row.ChannelID,
+		"tenant_id":          row.TenantID,
+		"enabled":            row.Enabled,
+		"remark":             row.Remark,
+		"expires_at":         row.ExpiresAt,
+		"created_at":         row.CreatedAt,
+		"app_id":             row.AppID,
+		"app_secret":         plain,
+		"public_access":      row.PublicAccess,
+		"allowed_origins":    row.AllowedOrigins,
+		"ip_rate_per_minute": row.IPRatePerMinute,
+		"ip_daily_quota":     row.IPDailyQuota,
 	})
 }
 
@@ -180,7 +229,7 @@ func (h *CallerTokenHandler) Update(c *gin.Context) {
 		return
 	}
 	if err := h.auth.UpdateCallerToken(c.Request.Context(), c.Param("id"), req); err != nil {
-		response.InternalError(c, err.Error())
+		response.BadRequest(c, err.Error())
 		return
 	}
 	response.OK(c, gin.H{"updated": true})
