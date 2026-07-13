@@ -1,4 +1,4 @@
-.PHONY: run build indexer migrate test docker-up docker-down
+.PHONY: run build build-linux indexer migrate test docker-up docker-down
 
 APP_ENV ?= local
 
@@ -9,6 +9,9 @@ build:
 	go build -o bin/server ./cmd/server
 	go build -o bin/indexer ./cmd/indexer
 	go build -o bin/migrate ./cmd/migrate
+
+build-linux:
+	docker build -f deployments/Dockerfile -t agent-customer-service:wecom .
 
 indexer:
 	go run ./cmd/indexer --file ./data/knowledge/qa.csv

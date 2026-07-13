@@ -4,6 +4,7 @@ bin/
 *.exe~
 *.dll
 *.so
+!internal/wecom/sdk/native/linux_amd64/libWeWorkFinanceSdk_C.so
 *.dylib
 
 # Test binary

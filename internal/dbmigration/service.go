@@ -70,6 +70,9 @@ func New(source, target *gorm.DB) *Service {
 			migrateTable[appdb.AIErrorLog],
 			migrateTable[appdb.Session],
 			migrateTable[appdb.Message],
+			migrateTable[appdb.WeComArchiveConfig],
+			migrateTable[appdb.WeComMessage],
+			migrateTable[appdb.WeComAnalysisRun],
 		},
 	}
 }

@@ -120,25 +120,30 @@ type QAItem struct {
 func (QAItem) TableName() string { return "qa_items" }
 
 type UnansweredQuestion struct {
-	ID            string      `gorm:"primaryKey;size:36" json:"id"`
-	Question      string      `gorm:"type:text;not null" json:"question"`
-	QuestionHash  string      `gorm:"size:64;uniqueIndex;not null" json:"-"`
-	SearchQuery   string      `gorm:"type:text" json:"search_query,omitempty"`
-	Reason        string      `gorm:"size:64;not null;index;default:no_hit" json:"reason"`
-	Status        string      `gorm:"size:32;not null;index;default:pending" json:"status"`
-	Occurrences   int         `gorm:"not null;default:1" json:"occurrences"`
-	Answer        string      `gorm:"type:text" json:"answer,omitempty"`
-	Category      string      `gorm:"size:128" json:"category,omitempty"`
-	Tags          StringSlice `gorm:"type:text" json:"tags,omitempty"`
-	SessionID     string      `gorm:"size:36;index" json:"session_id,omitempty"`
-	RequestID     string      `gorm:"size:128;index" json:"request_id,omitempty"`
-	CallerUserID  string      `gorm:"size:128;index" json:"caller_user_id,omitempty"`
-	ChannelID     string      `gorm:"size:128;index" json:"channel_id,omitempty"`
-	TenantID      string      `gorm:"size:128;index" json:"tenant_id,omitempty"`
-	ConvertedQAID string      `gorm:"size:36;index" json:"converted_qa_id,omitempty"`
-	FirstSeenAt   time.Time   `json:"first_seen_at"`
-	LastSeenAt    time.Time   `json:"last_seen_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
+	ID             string      `gorm:"primaryKey;size:36" json:"id"`
+	Question       string      `gorm:"type:text;not null" json:"question"`
+	QuestionHash   string      `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	SearchQuery    string      `gorm:"type:text" json:"search_query,omitempty"`
+	Reason         string      `gorm:"size:64;not null;index;default:no_hit" json:"reason"`
+	Status         string      `gorm:"size:32;not null;index;default:pending" json:"status"`
+	Occurrences    int         `gorm:"not null;default:1" json:"occurrences"`
+	Answer         string      `gorm:"type:text" json:"answer,omitempty"`
+	Category       string      `gorm:"size:128" json:"category,omitempty"`
+	Tags           StringSlice `gorm:"type:text" json:"tags,omitempty"`
+	SessionID      string      `gorm:"size:36;index" json:"session_id,omitempty"`
+	RequestID      string      `gorm:"size:128;index" json:"request_id,omitempty"`
+	CallerUserID   string      `gorm:"size:128;index" json:"caller_user_id,omitempty"`
+	ChannelID      string      `gorm:"size:128;index" json:"channel_id,omitempty"`
+	TenantID       string      `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	ConvertedQAID  string      `gorm:"size:36;index" json:"converted_qa_id,omitempty"`
+	Source         string      `gorm:"size:32;not null;default:chat;index" json:"source"`
+	SourceRef      string      `gorm:"size:128;index" json:"source_ref,omitempty"`
+	EmployeeUserID string      `gorm:"size:128;index" json:"employee_user_id,omitempty"`
+	RoomID         string      `gorm:"size:128;index" json:"room_id,omitempty"`
+	Context        string      `gorm:"type:text" json:"context,omitempty"`
+	FirstSeenAt    time.Time   `json:"first_seen_at"`
+	LastSeenAt     time.Time   `json:"last_seen_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 func (UnansweredQuestion) TableName() string { return "unanswered_questions" }
@@ -162,6 +167,11 @@ type UnansweredQuestionEvent struct {
 	CallerUserID     string    `gorm:"size:128;index" json:"caller_user_id,omitempty"`
 	ChannelID        string    `gorm:"size:128;index" json:"channel_id,omitempty"`
 	TenantID         string    `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	Source           string    `gorm:"size:32;not null;default:chat;index" json:"source"`
+	SourceRef        string    `gorm:"size:128;index" json:"source_ref,omitempty"`
+	EmployeeUserID   string    `gorm:"size:128;index" json:"employee_user_id,omitempty"`
+	RoomID           string    `gorm:"size:128;index" json:"room_id,omitempty"`
+	Context          string    `gorm:"type:text" json:"context,omitempty"`
 	CreatedAt        time.Time `gorm:"index" json:"created_at"`
 }
 
@@ -277,3 +287,59 @@ type Message struct {
 }
 
 func (Message) TableName() string { return "messages" }
+
+// WeComArchiveConfig is the singleton configuration for the one supported
+// enterprise. Secret and private key are never returned by management APIs.
+type WeComArchiveConfig struct {
+	ID                     string      `gorm:"primaryKey;size:36" json:"id"`
+	CorpID                 string      `gorm:"size:128;not null" json:"corp_id"`
+	Secret                 string      `gorm:"type:text" json:"-"`
+	PrivateKey             string      `gorm:"type:text" json:"-"`
+	PublicKeyVersion       int         `gorm:"not null;default:1" json:"public_key_version"`
+	ArchiveUserID          string      `gorm:"size:128;index" json:"archive_user_id"`
+	GroupIDs               StringSlice `gorm:"type:text" json:"group_ids"`
+	Enabled                bool        `gorm:"not null;default:false;index" json:"enabled"`
+	PollIntervalSeconds    int         `gorm:"not null;default:10" json:"poll_interval_seconds"`
+	AnalyzeIntervalSeconds int         `gorm:"not null;default:600" json:"analyze_interval_seconds"`
+	LastSeq                uint64      `gorm:"not null;default:0" json:"last_seq"`
+	LastSyncAt             *time.Time  `json:"last_sync_at,omitempty"`
+	LastAnalyzeAt          *time.Time  `json:"last_analyze_at,omitempty"`
+	LastError              string      `gorm:"type:text" json:"last_error,omitempty"`
+	CreatedAt              time.Time   `json:"created_at"`
+	UpdatedAt              time.Time   `json:"updated_at"`
+}
+
+func (WeComArchiveConfig) TableName() string { return "wecom_archive_configs" }
+
+type WeComMessage struct {
+	ID         string      `gorm:"primaryKey;size:36" json:"id"`
+	Seq        uint64      `gorm:"uniqueIndex;not null" json:"seq"`
+	MsgID      string      `gorm:"size:128;uniqueIndex;not null" json:"msg_id"`
+	Action     string      `gorm:"size:32;index" json:"action"`
+	FromUserID string      `gorm:"size:128;index" json:"from_user_id"`
+	ToUserIDs  StringSlice `gorm:"type:text" json:"to_user_ids"`
+	RoomID     string      `gorm:"size:128;index" json:"room_id,omitempty"`
+	MsgType    string      `gorm:"size:32;index" json:"msg_type"`
+	Content    string      `gorm:"type:text" json:"content"`
+	Direction  string      `gorm:"size:32;index" json:"direction"`
+	MessageAt  time.Time   `gorm:"index" json:"message_at"`
+	AnalyzedAt *time.Time  `gorm:"index" json:"analyzed_at,omitempty"`
+	CreatedAt  time.Time   `json:"created_at"`
+}
+
+func (WeComMessage) TableName() string { return "wecom_messages" }
+
+type WeComAnalysisRun struct {
+	ID              string     `gorm:"primaryKey;size:36" json:"id"`
+	AnalysisDate    string     `gorm:"size:10;index" json:"analysis_date"`
+	Status          string     `gorm:"size:32;index" json:"status"`
+	MessageCount    int        `json:"message_count"`
+	QuestionCount   int        `json:"question_count"`
+	KnownCount      int        `json:"known_count"`
+	UnansweredCount int        `json:"unanswered_count"`
+	Error           string     `gorm:"type:text" json:"error,omitempty"`
+	StartedAt       time.Time  `gorm:"index" json:"started_at"`
+	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+}
+
+func (WeComAnalysisRun) TableName() string { return "wecom_analysis_runs" }

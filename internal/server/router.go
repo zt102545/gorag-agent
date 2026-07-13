@@ -22,6 +22,7 @@ type Deps struct {
 	AdminSessionHandler *handler.AdminSessionHandler
 	AIErrorHandler      *handler.AIErrorHandler
 	UnansweredHandler   *handler.UnansweredHandler
+	WeComHandler        *handler.WeComHandler
 	PublicLimiter       *middleware.PublicIPLimiter
 }
 
@@ -64,6 +65,20 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		authed := admin.Group("", middleware.JWTAuth(deps.Auth))
 		{
 			authed.GET("/auth/me", deps.AuthHandler.Me)
+
+			wecomRead := authed.Group("/wecom", middleware.RequireRole(auth.RoleViewer))
+			{
+				wecomRead.GET("/config", deps.WeComHandler.GetConfig)
+				wecomRead.GET("/messages", deps.WeComHandler.Messages)
+				wecomRead.GET("/analysis-runs", deps.WeComHandler.Runs)
+			}
+			wecomWrite := authed.Group("/wecom", middleware.RequireRole(auth.RoleAdmin))
+			{
+				wecomWrite.PUT("/config", deps.WeComHandler.SaveConfig)
+				wecomWrite.POST("/test", deps.WeComHandler.Test)
+				wecomWrite.POST("/sync", deps.WeComHandler.Sync)
+				wecomWrite.POST("/analyze", deps.WeComHandler.Analyze)
+			}
 
 			qaRead := authed.Group("/knowledge/qa", middleware.RequireRole(auth.RoleViewer))
 			{
@@ -192,6 +207,13 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.PUT("/unanswered-questions/:id", deps.UnansweredHandler.GMUpdate)
 		gm.POST("/unanswered-questions/:id/convert", deps.UnansweredHandler.GMConvert)
 		gm.DELETE("/unanswered-questions/:id", deps.UnansweredHandler.GMDelete)
+		gm.GET("/wecom/config", deps.WeComHandler.GMGetConfig)
+		gm.PUT("/wecom/config", deps.WeComHandler.GMSaveConfig)
+		gm.POST("/wecom/test", deps.WeComHandler.GMTest)
+		gm.POST("/wecom/sync", deps.WeComHandler.GMSync)
+		gm.POST("/wecom/analyze", deps.WeComHandler.GMAnalyze)
+		gm.GET("/wecom/messages", deps.WeComHandler.GMMessages)
+		gm.GET("/wecom/analysis-runs", deps.WeComHandler.GMRuns)
 
 		// Test chat only needs a caller token. It reuses the same BizAuth, session
 		// persistence and chat pipeline as external callers.

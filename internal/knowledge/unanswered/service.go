@@ -31,6 +31,8 @@ type CaptureInput struct {
 	SessionID, RequestID, CallerUserID, ChannelID, TenantID string
 	IntentConfidence, TopScore                              float64
 	HitCount                                                int
+	Source, SourceRef, EmployeeUserID, RoomID, Context      string
+	DraftAnswer                                             string
 }
 type ListQuery struct {
 	Q, Status, Reason, TenantID, ChannelID, Sort string
@@ -75,14 +77,35 @@ func (s *Service) Capture(ctx context.Context, in CaptureInput) error {
 	if reason == "" {
 		reason = ReasonNoHit
 	}
-	row := db.UnansweredQuestion{ID: uuid.NewString(), Question: question, QuestionHash: hash(in.TenantID, question), SearchQuery: strings.TrimSpace(in.SearchQuery), Reason: reason, Status: StatusPending, Occurrences: 1, SessionID: in.SessionID, RequestID: in.RequestID, CallerUserID: in.CallerUserID, ChannelID: in.ChannelID, TenantID: in.TenantID, FirstSeenAt: now, LastSeenAt: now, UpdatedAt: now}
+	source := strings.TrimSpace(in.Source)
+	if source == "" {
+		source = "chat"
+	}
+	row := db.UnansweredQuestion{ID: uuid.NewString(), Question: question, QuestionHash: hash(in.TenantID, question), SearchQuery: strings.TrimSpace(in.SearchQuery), Reason: reason, Status: StatusPending, Occurrences: 1, Answer: strings.TrimSpace(in.DraftAnswer), SessionID: in.SessionID, RequestID: in.RequestID, CallerUserID: in.CallerUserID, ChannelID: in.ChannelID, TenantID: in.TenantID, Source: source, SourceRef: in.SourceRef, EmployeeUserID: in.EmployeeUserID, RoomID: in.RoomID, Context: in.Context, FirstSeenAt: now, LastSeenAt: now, UpdatedAt: now}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if source != "chat" && strings.TrimSpace(in.SourceRef) != "" {
+			var existingEvent db.UnansweredQuestionEvent
+			if err := tx.Where("source = ? AND source_ref = ?", source, in.SourceRef).First(&existingEvent).Error; err == nil {
+				updates := map[string]any{"context": in.Context, "updated_at": now, "last_seen_at": now}
+				if strings.TrimSpace(in.DraftAnswer) != "" {
+					updates["answer"] = gorm.Expr("CASE WHEN status = ? AND (answer IS NULL OR answer = '') THEN ? ELSE answer END", StatusPending, strings.TrimSpace(in.DraftAnswer))
+				}
+				return tx.Model(&db.UnansweredQuestion{}).Where("id = ?", existingEvent.QuestionID).Updates(updates).Error
+			} else if err != gorm.ErrRecordNotFound {
+				return err
+			}
+		}
 		updates := map[string]any{
 			"occurrences": gorm.Expr("occurrences + 1"), "last_seen_at": now, "updated_at": now,
 			"search_query": row.SearchQuery, "reason": reason, "session_id": row.SessionID,
 			"request_id": row.RequestID, "caller_user_id": row.CallerUserID,
 			"channel_id": row.ChannelID, "tenant_id": row.TenantID,
+			"source": source, "source_ref": row.SourceRef, "employee_user_id": row.EmployeeUserID,
+			"room_id": row.RoomID, "context": row.Context,
 			"status": gorm.Expr("CASE WHEN status = ? THEN ? ELSE status END", StatusConverted, StatusPending),
+		}
+		if strings.TrimSpace(in.DraftAnswer) != "" {
+			updates["answer"] = gorm.Expr("CASE WHEN status = ? AND (answer IS NULL OR answer = '') THEN ? ELSE answer END", StatusPending, strings.TrimSpace(in.DraftAnswer))
 		}
 		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "question_hash"}}, DoUpdates: clause.Assignments(updates)}).Create(&row).Error; err != nil {
 			return err
@@ -91,7 +114,7 @@ func (s *Service) Capture(ctx context.Context, in CaptureInput) error {
 		if err := tx.First(&aggregate, "question_hash = ?", row.QuestionHash).Error; err != nil {
 			return err
 		}
-		event := db.UnansweredQuestionEvent{ID: uuid.NewString(), QuestionID: aggregate.ID, Question: question, SearchQuery: strings.TrimSpace(in.SearchQuery), Reason: reason, Intent: strings.TrimSpace(in.Intent), IntentConfidence: in.IntentConfidence, HitCount: in.HitCount, TopScore: in.TopScore, FinalAnswer: strings.TrimSpace(in.FinalAnswer), SessionID: in.SessionID, RequestID: in.RequestID, CallerUserID: in.CallerUserID, ChannelID: in.ChannelID, TenantID: in.TenantID, CreatedAt: now}
+		event := db.UnansweredQuestionEvent{ID: uuid.NewString(), QuestionID: aggregate.ID, Question: question, SearchQuery: strings.TrimSpace(in.SearchQuery), Reason: reason, Intent: strings.TrimSpace(in.Intent), IntentConfidence: in.IntentConfidence, HitCount: in.HitCount, TopScore: in.TopScore, FinalAnswer: strings.TrimSpace(in.FinalAnswer), SessionID: in.SessionID, RequestID: in.RequestID, CallerUserID: in.CallerUserID, ChannelID: in.ChannelID, TenantID: in.TenantID, Source: source, SourceRef: in.SourceRef, EmployeeUserID: in.EmployeeUserID, RoomID: in.RoomID, Context: in.Context, CreatedAt: now}
 		return tx.Create(&event).Error
 	})
 }

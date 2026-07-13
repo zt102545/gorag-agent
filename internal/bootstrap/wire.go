@@ -20,6 +20,8 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/server/handler"
 	"github.com/yourorg/agent_customer_service/internal/server/middleware"
 	"github.com/yourorg/agent_customer_service/internal/vectorstore"
+	"github.com/yourorg/agent_customer_service/internal/wecom"
+	wecomsdk "github.com/yourorg/agent_customer_service/internal/wecom/sdk"
 	"github.com/yourorg/agent_customer_service/pkg/sse"
 )
 
@@ -98,6 +100,8 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	classifier.Start(ctx)
 
 	intentAnalyzer := rag.NewIntentAnalyzer(runtime, newModelFactory(runtime), admin.PromptIntentRoute, 0.6)
+	wecomService := wecom.NewService(gdb, wecomsdk.NativeFactory{}, ragService, newModelFactory(runtime), unansweredService, cfg.WeCom.EncryptionKey)
+	wecomService.Start(ctx)
 
 	sseWriter := sse.NewWriter()
 	router := newHTTPRouter(cfg, &server.Deps{
@@ -113,6 +117,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		AdminSessionHandler: handler.NewAdminSessionHandler(sessionApp),
 		AIErrorHandler:      handler.NewAIErrorHandler(aiErrorSvc),
 		UnansweredHandler:   handler.NewUnansweredHandler(unansweredService, knowledgeApp),
+		WeComHandler:        handler.NewWeComHandler(wecomService),
 		PublicLimiter:       publicLimiter,
 	})
 

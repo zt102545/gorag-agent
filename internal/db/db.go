@@ -96,5 +96,8 @@ func Models() []any {
 		&AIErrorLog{},
 		&Session{},
 		&Message{},
+		&WeComArchiveConfig{},
+		&WeComMessage{},
+		&WeComAnalysisRun{},
 	}
 }
