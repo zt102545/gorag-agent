@@ -11,9 +11,13 @@
 3. 渠道服务端向 H5 提供换票接口，控件缓存短期 Token 并在过期前刷新。
 
 ```html
-<script src="https://客服静态资源域名/customer-service-widget.js"></script>
-<customer-service-widget api-base="https://客服接口域名" token-endpoint="https://业务域名/api/customer-service/token" caller-user-id="当前登录用户ID" channel-id="h5" tenant-id="tenant-a" title="在线客服" primary-color="#246bfd"></customer-service-widget>
+<script src="https://客服接口域名/customer-service-widget.js"></script>
+<customer-service-widget caller-user-id="当前登录用户ID"></customer-service-widget>
 ```
+
+这是推荐的最简配置。客服 API 默认使用加载控件脚本的域名，换票地址默认使用当前业务站点的 `/api/customer-service/token`，渠道默认 `h5`；租户、标题、欢迎语、位置和主题色都有默认值。只有静态资源与 API 不同域名，或换票路由不同时才需要覆盖配置。
+
+控件脚本已通过 Go `embed` 编入服务二进制，由 `/customer-service-widget.js` 提供。更新控件后重新编译、替换并重启服务二进制即可发布新版本，无需单独同步静态文件。
 
 渠道换票接口必须用服务端登录态校验或覆盖前端提交的 `caller_user_id`，防止冒用其他用户。服务端换票请求：
 
@@ -34,10 +38,7 @@ Content-Type: application/json
 
 ```js
 const widget = CustomerServiceWidget.create({
-  apiBase: 'https://客服接口域名', tokenEndpoint: '/api/customer-service/token',
-  callerUserId: currentUser.id, channelId: 'h5', tenantId: 'tenant-a',
-  title: '售后客服', greeting: '您好，请问需要什么帮助？',
-  position: 'right', primaryColor: '#246bfd'
+  callerUserId: currentUser.id
 })
 widget.open()
 widget.close()
@@ -47,9 +48,9 @@ widget.close()
 
 | HTML 属性 | JS 配置 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `api-base` | `apiBase` | 是 | Biz API 根域名 |
+| `api-base` | `apiBase` | 否 | 默认取控件脚本所在域名 |
 | `caller-user-id` | `callerUserId` | 是 | 当前真实登录用户 ID |
-| `token-endpoint` | `tokenEndpoint` | 生产必填 | 渠道服务端换票地址 |
+| `token-endpoint` | `tokenEndpoint` | 否 | 默认当前业务域名的 `/api/customer-service/token` |
 | `channel-id` | `channelId` | 否 | 默认 `h5` |
 | `tenant-id` | `tenantId` | 否 | 租户/业务线标识 |
 | `title` / `greeting` | `title` / `greeting` | 否 | 标题和欢迎语 |

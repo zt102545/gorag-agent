@@ -34,6 +34,7 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 
 	r.GET("/health", handler.Health)
 	r.GET("/api/v1/health", handler.Health)
+	r.GET("/customer-service-widget.js", handler.CustomerServiceWidget)
 	r.POST("/api/v1/biz/auth/token", deps.CallerTokenHandler.IssueUserToken)
 
 	biz := r.Group("/api/v1/biz", middleware.BizAuth(deps.Auth), middleware.BizRateLimit())
