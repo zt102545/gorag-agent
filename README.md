@@ -146,6 +146,8 @@ vector_store:
 
 ## Biz API（外部客服接入）
 
+任意 H5 页面可直接接入悬浮聊天控件，支持新对话、SSE 流式消息、历史会话列表与续聊。接入方式见 [`docs/h5-chat-widget.md`](docs/h5-chat-widget.md)，本地演示页为 `http://localhost:5173/widget-demo.html`。
+
 前缀：`/api/v1/biz`，请求头 `Authorization: Bearer <caller_token>`（在 GM「调用方 Token」创建）。
 
 更完整的外部接入说明、请求头约定、会话续聊/新会话选择规则、`curl` 示例与 SSE 说明，见：

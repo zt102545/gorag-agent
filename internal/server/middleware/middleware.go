@@ -138,9 +138,16 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			bizCtx.AuthType = "caller_token"
+			bizCtx.AuthType = identity.AuthType
 			bizCtx.CallerTokenID = identity.TokenID
 			bizCtx.CallerName = identity.Name
+			if identity.AuthType == "user_token" {
+				bizCtx.CallerUserID = identity.CallerUserID
+				bizCtx.ChannelID = identity.ChannelID
+				bizCtx.TenantID = identity.TenantID
+			} else if identity.CallerUserID != "" {
+				bizCtx.CallerUserID = identity.CallerUserID
+			}
 			if bizCtx.ChannelID == "" {
 				bizCtx.ChannelID = identity.ChannelID
 			}
@@ -161,9 +168,16 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			bizCtx.AuthType = "caller_token"
+			bizCtx.AuthType = identity.AuthType
 			bizCtx.CallerTokenID = identity.TokenID
 			bizCtx.CallerName = identity.Name
+			if identity.AuthType == "user_token" {
+				bizCtx.CallerUserID = identity.CallerUserID
+				bizCtx.ChannelID = identity.ChannelID
+				bizCtx.TenantID = identity.TenantID
+			} else if identity.CallerUserID != "" {
+				bizCtx.CallerUserID = identity.CallerUserID
+			}
 			if bizCtx.ChannelID == "" {
 				bizCtx.ChannelID = identity.ChannelID
 			}
@@ -195,6 +209,22 @@ func BizRateLimit() gin.HandlerFunc {
 			if c.IsAborted() {
 				return
 			}
+		}
+		c.Next()
+	}
+}
+
+func BizSessionAccess(authSvc *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		biz := GetBizContext(c)
+		if c.Param("id") == "" || biz == nil || biz.AuthType != "user_token" {
+			c.Next()
+			return
+		}
+		if !authSvc.CanAccessSession(c.Request.Context(), c.Param("id"), biz.CallerTokenID, biz.CallerUserID, biz.ChannelID, biz.TenantID) {
+			response.NotFound(c, "session not found")
+			c.Abort()
+			return
 		}
 		c.Next()
 	}

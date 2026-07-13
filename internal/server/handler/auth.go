@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -119,6 +120,20 @@ type CallerTokenHandler struct {
 	auth *auth.Service
 }
 
+func (h *CallerTokenHandler) IssueUserToken(c *gin.Context) {
+	var req auth.IssueUserTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	token, expiresAt, err := h.auth.IssueUserToken(c.Request.Context(), req)
+	if err != nil {
+		response.Error(c, http.StatusUnauthorized, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"access_token": token, "token_type": "Bearer", "expires_in": int(time.Until(expiresAt).Seconds()), "expires_at": expiresAt})
+}
+
 func NewCallerTokenHandler(authSvc *auth.Service) *CallerTokenHandler {
 	return &CallerTokenHandler{auth: authSvc}
 }
@@ -135,16 +150,17 @@ func (h *CallerTokenHandler) Create(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{
-		"id":           row.ID,
-		"name":         row.Name,
-		"prefix":       row.Prefix,
-		"channel_id":   row.ChannelID,
-		"tenant_id":    row.TenantID,
-		"enabled":      row.Enabled,
-		"remark":       row.Remark,
-		"expires_at":   row.ExpiresAt,
-		"created_at":   row.CreatedAt,
-		"caller_token": plain,
+		"id":         row.ID,
+		"name":       row.Name,
+		"prefix":     row.Prefix,
+		"channel_id": row.ChannelID,
+		"tenant_id":  row.TenantID,
+		"enabled":    row.Enabled,
+		"remark":     row.Remark,
+		"expires_at": row.ExpiresAt,
+		"created_at": row.CreatedAt,
+		"app_id":     row.AppID,
+		"app_secret": plain,
 	})
 }
 

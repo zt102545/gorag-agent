@@ -38,10 +38,21 @@ type Service struct {
 }
 
 type CallerIdentity struct {
-	TokenID   string
-	Name      string
-	ChannelID string
-	TenantID  string
+	TokenID      string
+	Name         string
+	CallerUserID string
+	ChannelID    string
+	TenantID     string
+	AuthType     string
+}
+
+type UserTokenClaims struct {
+	AppID        string `json:"app_id"`
+	CallerUserID string `json:"caller_user_id"`
+	ChannelID    string `json:"channel_id,omitempty"`
+	TenantID     string `json:"tenant_id,omitempty"`
+	TokenType    string `json:"token_type"`
+	jwt.RegisteredClaims
 }
 
 func NewService(gdb *gorm.DB, cfg config.JWTConfig) *Service {
@@ -242,28 +253,105 @@ type CreateCallerTokenRequest struct {
 }
 
 func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRequest) (plain string, row *db.CallerToken, err error) {
-	plain, err = generateSecret("ct_", 24)
+	plain, err = generateSecret("as_", 24)
 	if err != nil {
 		return "", nil, err
 	}
 	row = &db.CallerToken{
-		ID:         uuid.NewString(),
-		Name:       strings.TrimSpace(req.Name),
-		TokenHash:  HashSecret(plain),
-		PlainToken: plain,
-		Prefix:     plain[:10],
-		ChannelID:  strings.TrimSpace(req.ChannelID),
-		TenantID:   strings.TrimSpace(req.TenantID),
-		Enabled:    true,
-		Remark:     strings.TrimSpace(req.Remark),
-		ExpiresAt:  req.ExpiresAt,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:            uuid.NewString(),
+		Name:          strings.TrimSpace(req.Name),
+		TokenHash:     HashSecret(plain), // legacy compatibility
+		PlainToken:    "",
+		Prefix:        plain[:10],
+		AppID:         "app_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+		AppSecretHash: HashSecret(plain),
+		ChannelID:     strings.TrimSpace(req.ChannelID),
+		TenantID:      strings.TrimSpace(req.TenantID),
+		Enabled:       true,
+		Remark:        strings.TrimSpace(req.Remark),
+		ExpiresAt:     req.ExpiresAt,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 	if err := s.db.WithContext(ctx).Create(row).Error; err != nil {
 		return "", nil, err
 	}
 	return plain, row, nil
+}
+
+type IssueUserTokenRequest struct {
+	AppID        string `json:"app_id" binding:"required"`
+	AppSecret    string `json:"app_secret" binding:"required"`
+	CallerUserID string `json:"caller_user_id" binding:"required"`
+	ChannelID    string `json:"channel_id"`
+	TenantID     string `json:"tenant_id"`
+}
+
+func (s *Service) IssueUserToken(ctx context.Context, req IssueUserTokenRequest) (string, time.Time, error) {
+	var app db.CallerToken
+	if err := s.db.WithContext(ctx).Where("app_id = ? AND enabled = ?", strings.TrimSpace(req.AppID), true).First(&app).Error; err != nil {
+		return "", time.Time{}, fmt.Errorf("invalid app credentials")
+	}
+	if app.AppSecretHash == "" || app.AppSecretHash != HashSecret(strings.TrimSpace(req.AppSecret)) {
+		return "", time.Time{}, fmt.Errorf("invalid app credentials")
+	}
+	if app.ExpiresAt != nil && app.ExpiresAt.Before(time.Now()) {
+		return "", time.Time{}, fmt.Errorf("app credentials expired")
+	}
+	callerUserID := strings.TrimSpace(req.CallerUserID)
+	channelID := strings.TrimSpace(req.ChannelID)
+	tenantID := strings.TrimSpace(req.TenantID)
+	if callerUserID == "" {
+		return "", time.Time{}, fmt.Errorf("caller_user_id is required")
+	}
+	if app.ChannelID != "" {
+		if channelID != "" && channelID != app.ChannelID {
+			return "", time.Time{}, fmt.Errorf("channel_id is not allowed for this app")
+		}
+		channelID = app.ChannelID
+	}
+	if app.TenantID != "" {
+		if tenantID != "" && tenantID != app.TenantID {
+			return "", time.Time{}, fmt.Errorf("tenant_id is not allowed for this app")
+		}
+		tenantID = app.TenantID
+	}
+	now := time.Now()
+	expiresAt := now.Add(15 * time.Minute)
+	claims := UserTokenClaims{
+		AppID: app.AppID, CallerUserID: callerUserID, ChannelID: channelID, TenantID: tenantID, TokenType: "biz_user",
+		RegisteredClaims: jwt.RegisteredClaims{Issuer: "agent-customer-service", Subject: callerUserID, Audience: jwt.ClaimStrings{"biz-api"}, IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now.Add(-30 * time.Second)), ExpiresAt: jwt.NewNumericDate(expiresAt), ID: uuid.NewString()},
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(s.cfg.Secret))
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	_ = s.db.WithContext(ctx).Model(&app).Update("last_used_at", now).Error
+	return token, expiresAt, nil
+}
+
+func (s *Service) validateUserToken(raw string) (*CallerIdentity, error) {
+	token, err := jwt.ParseWithClaims(raw, &UserTokenClaims{}, func(t *jwt.Token) (any, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return []byte(s.cfg.Secret), nil
+	}, jwt.WithAudience("biz-api"), jwt.WithIssuer("agent-customer-service"))
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := token.Claims.(*UserTokenClaims)
+	if !ok || !token.Valid || claims.TokenType != "biz_user" || claims.CallerUserID == "" || claims.AppID == "" {
+		return nil, fmt.Errorf("invalid user token")
+	}
+	var app db.CallerToken
+	if err := s.db.Where("app_id = ? AND enabled = ?", claims.AppID, true).First(&app).Error; err != nil {
+		return nil, fmt.Errorf("app disabled or deleted")
+	}
+	if app.ExpiresAt != nil && app.ExpiresAt.Before(time.Now()) {
+		return nil, fmt.Errorf("app credentials expired")
+	}
+	return &CallerIdentity{TokenID: app.ID, Name: app.Name, CallerUserID: claims.CallerUserID, ChannelID: claims.ChannelID, TenantID: claims.TenantID, AuthType: "user_token"}, nil
 }
 
 func (s *Service) ListCallerTokens(ctx context.Context) ([]db.CallerToken, error) {
@@ -314,6 +402,9 @@ func (s *Service) ValidateCallerToken(ctx context.Context, raw string) (*CallerI
 	if raw == "" {
 		return nil, fmt.Errorf("missing caller token")
 	}
+	if identity, err := s.validateUserToken(raw); err == nil {
+		return identity, nil
+	}
 	var row db.CallerToken
 	if err := s.db.WithContext(ctx).Where("token_hash = ? AND enabled = ?", HashSecret(raw), true).First(&row).Error; err != nil {
 		return nil, fmt.Errorf("invalid caller token")
@@ -328,5 +419,14 @@ func (s *Service) ValidateCallerToken(ctx context.Context, raw string) (*CallerI
 		Name:      row.Name,
 		ChannelID: row.ChannelID,
 		TenantID:  row.TenantID,
+		AuthType:  "legacy_caller_token",
 	}, nil
+}
+
+func (s *Service) CanAccessSession(ctx context.Context, sessionID, tokenID, callerUserID, channelID, tenantID string) bool {
+	var row db.Session
+	if err := s.db.WithContext(ctx).Select("caller_token_id", "external_user_id", "channel_id", "tenant_id").First(&row, "id = ?", sessionID).Error; err != nil {
+		return false
+	}
+	return row.CallerTokenID == tokenID && row.ExternalUserID == callerUserID && row.ChannelID == channelID && row.TenantID == tenantID
 }

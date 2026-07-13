@@ -34,13 +34,14 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 
 	r.GET("/health", handler.Health)
 	r.GET("/api/v1/health", handler.Health)
+	r.POST("/api/v1/biz/auth/token", deps.CallerTokenHandler.IssueUserToken)
 
 	biz := r.Group("/api/v1/biz", middleware.BizAuth(deps.Auth), middleware.BizRateLimit())
 	{
 		biz.POST("/chat/ask", deps.ChatHandler.Ask)
 		biz.GET("/users/:callerUserID/sessions", deps.SessionHandler.ListByUser)
 
-		sessions := biz.Group("/sessions")
+		sessions := biz.Group("/sessions", middleware.BizSessionAccess(deps.Auth))
 		{
 			sessions.POST("", deps.SessionHandler.Create)
 			sessions.GET("/:id", deps.SessionHandler.Get)

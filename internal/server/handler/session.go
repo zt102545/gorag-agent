@@ -37,7 +37,11 @@ func (h *SessionHandler) Create(c *gin.Context) {
 		Meta:           req.Meta,
 	}
 	if bizCtx != nil {
-		if params.ExternalUserID == "" {
+		if bizCtx.AuthType == "user_token" {
+			params.ExternalUserID = bizCtx.CallerUserID
+			params.ChannelID = bizCtx.ChannelID
+			params.TenantID = bizCtx.TenantID
+		} else if params.ExternalUserID == "" {
 			params.ExternalUserID = bizCtx.CallerUserID
 		}
 		if params.ChannelID == "" {
@@ -100,10 +104,18 @@ func (h *SessionHandler) ListByUser(c *gin.Context) {
 		return
 	}
 	bizCtx := middleware.GetBizContext(c)
+	if bizCtx != nil && bizCtx.AuthType == "user_token" {
+		if callerUserID != bizCtx.CallerUserID {
+			response.NotFound(c, "user sessions not found")
+			return
+		}
+		callerUserID = bizCtx.CallerUserID
+	}
 	total, items, err := h.service.ListByUser(c.Request.Context(), session.ListQuery{
 		ExternalUserID: callerUserID,
-		ChannelID:      firstNonEmpty(c.Query("channel_id"), bizCtxValue(bizCtx, "channel")),
-		TenantID:       firstNonEmpty(c.Query("tenant_id"), bizCtxValue(bizCtx, "tenant")),
+		ChannelID:      scopedValue(c.Query("channel_id"), bizCtxValue(bizCtx, "channel"), bizCtx),
+		TenantID:       scopedValue(c.Query("tenant_id"), bizCtxValue(bizCtx, "tenant"), bizCtx),
+		CallerTokenID:  scopedTokenID(bizCtx),
 		Page:           page,
 		Size:           size,
 	})
@@ -116,6 +128,20 @@ func (h *SessionHandler) ListByUser(c *gin.Context) {
 		"caller_user_id": callerUserID,
 		"items":          items,
 	})
+}
+
+func scopedValue(requested, bound string, biz *middleware.BizContext) string {
+	if biz != nil && biz.AuthType == "user_token" {
+		return bound
+	}
+	return firstNonEmpty(requested, bound)
+}
+
+func scopedTokenID(biz *middleware.BizContext) string {
+	if biz != nil && biz.AuthType == "user_token" {
+		return biz.CallerTokenID
+	}
+	return ""
 }
 
 func firstNonEmpty(values ...string) string {

@@ -102,6 +102,12 @@ Authorization: Bearer <caller_token>
 - 用途：请求幂等标识，尤其适合网络重试时避免重复处理
 - 示例：`idem_20260708_001`
 
+## 用户级短期凭证
+
+生产渠道先在 GM 创建接入应用，取得 `app_id` 和 `app_secret`。`app_secret` 只能由渠道服务端保存；渠道服务端确认当前登录用户后，调用 `POST /api/v1/biz/auth/token` 换取默认 15 分钟有效的用户 Token。请求字段为 `app_id`、`app_secret`、`caller_user_id`，以及可选的 `channel_id`、`tenant_id`。
+
+后续 Biz API 使用 `Authorization: Bearer <access_token>`。用户、渠道和租户均以 Token 内绑定的信息为准，调用方不能通过请求头切换身份。完整的 H5 接入流程见 [`h5-chat-widget.md`](h5-chat-widget.md)。旧 Caller Token 鉴权暂时保留兼容，新渠道不应继续使用。
+
 ## 会话模型
 
 接口方可以自行决定是否继续上下文：

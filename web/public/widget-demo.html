@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>H5 客服控件演示</title><style>body{margin:0;font-family:system-ui;background:#f5f7fb;color:#172033}.demo{max-width:900px;margin:80px auto;padding:32px}.card{background:white;border-radius:24px;padding:40px;box-shadow:0 18px 50px #21315212}h1{font-size:36px;margin:0 0 14px}p{color:#697386;line-height:1.8}code{background:#eef3ff;padding:3px 7px;border-radius:6px}@media(max-width:600px){.demo{margin:20px auto;padding:16px}.card{padding:24px}h1{font-size:28px}}</style></head>
+<body><main class="demo"><section class="card"><h1>您的 H5 业务页面</h1><p>右下角是可嵌入式在线客服。点击按钮即可开始新对话、发送消息并查看该用户的历史会话。</p><p>演示前请在页面源码中设置有效的 <code>caller-user-id</code> 和 <code>token</code>。</p></section></main>
+<script src="/customer-service-widget.js"></script>
+<customer-service-widget api-base="http://127.0.0.1:8080" caller-user-id="demo-user-10001" app-id="请替换为AppID" app-secret="仅限本地演示，生产环境不要放在H5" channel-id="h5" title="专属客服"></customer-service-widget>
+</body></html>
