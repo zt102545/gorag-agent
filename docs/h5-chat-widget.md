@@ -196,13 +196,17 @@ https://www.example.com/customer-service/page
 Content-Security-Policy:
   script-src 'self' https://testapi.realcopyright.cn;
   connect-src 'self' https://testapi.realcopyright.cn;
+  img-src 'self' https:;
 ```
+
+控件支持在客服回复中展示经过安全过滤的富文本，包括 `chat_handoff` 配置中的公网图片。图片地址仅支持 `http://` 或 `https://`；生产环境建议统一使用 HTTPS，并在 `img-src` 中放行实际图片域名。
 
 ## 十、会话行为
 
 - 每个会话在服务端保留最近 50 条消息。
 - 当前会话按“租户 + 渠道 + 用户”保存在浏览器 `localStorage` 中。
 - 刷新页面后可以恢复当前会话并继续咨询。
+- 客服回复支持安全富文本和图片，用户输入始终按纯文本显示。
 - “新对话”会创建新会话，旧会话仍保留在历史列表。
 - “清空消息”永久删除当前会话消息，但保留会话。
 - “删除会话”永久删除会话及消息。
