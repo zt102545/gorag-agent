@@ -113,6 +113,29 @@ type QAItem struct {
 
 func (QAItem) TableName() string { return "qa_items" }
 
+type UnansweredQuestion struct {
+	ID            string      `gorm:"primaryKey;size:36" json:"id"`
+	Question      string      `gorm:"type:text;not null" json:"question"`
+	QuestionHash  string      `gorm:"size:64;uniqueIndex;not null" json:"-"`
+	SearchQuery   string      `gorm:"type:text" json:"search_query,omitempty"`
+	Status        string      `gorm:"size:32;not null;index;default:pending" json:"status"`
+	Occurrences   int         `gorm:"not null;default:1" json:"occurrences"`
+	Answer        string      `gorm:"type:text" json:"answer,omitempty"`
+	Category      string      `gorm:"size:128" json:"category,omitempty"`
+	Tags          StringSlice `gorm:"type:text" json:"tags,omitempty"`
+	SessionID     string      `gorm:"size:36;index" json:"session_id,omitempty"`
+	RequestID     string      `gorm:"size:128;index" json:"request_id,omitempty"`
+	CallerUserID  string      `gorm:"size:128;index" json:"caller_user_id,omitempty"`
+	ChannelID     string      `gorm:"size:128;index" json:"channel_id,omitempty"`
+	TenantID      string      `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	ConvertedQAID string      `gorm:"size:36;index" json:"converted_qa_id,omitempty"`
+	FirstSeenAt   time.Time   `json:"first_seen_at"`
+	LastSeenAt    time.Time   `json:"last_seen_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+}
+
+func (UnansweredQuestion) TableName() string { return "unanswered_questions" }
+
 type AIProvider struct {
 	ID          string    `gorm:"primaryKey;size:36" json:"id"`
 	Kind        string    `gorm:"uniqueIndex;size:32;not null" json:"kind"` // chat | embedding

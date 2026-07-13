@@ -13,7 +13,7 @@ type Body struct {
 }
 
 func OK(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, Body{Code: 0, Message: "ok", Data: data})
+	c.JSON(http.StatusOK, Body{Code: http.StatusOK, Message: "ok", Data: data})
 }
 
 func Error(c *gin.Context, status int, message string) {

@@ -15,6 +15,10 @@
           <el-icon><ChatDotRound /></el-icon>
           <span>会话留存</span>
         </el-menu-item>
+        <el-menu-item index="/unanswered-questions">
+          <el-icon><QuestionFilled /></el-icon>
+          <span>未找到答案问题库</span>
+        </el-menu-item>
         <el-menu-item v-if="auth.canEdit" index="/prompts">
           <el-icon><EditPen /></el-icon>
           <span>提示词</span>
@@ -26,7 +30,11 @@
         <el-menu-item v-if="auth.isAdmin" index="/ai-errors">
           <el-icon><Warning /></el-icon>
           <span>错误日志</span>
-          <el-badge v-if="unresolvedCount > 0" :value="unresolvedCount" class="menu-badge" />
+          <el-badge
+            v-if="unresolvedCount > 0"
+            :value="unresolvedCount"
+            class="menu-badge"
+          />
         </el-menu-item>
         <el-menu-item v-if="auth.isAdmin" index="/caller-tokens">
           <el-icon><Key /></el-icon>
@@ -40,10 +48,16 @@
     </el-aside>
     <el-container>
       <el-header class="header">
-        <div class="title">{{ (route.meta.title as string) || '管理台' }}</div>
+        <div class="title">{{ (route.meta.title as string) || "管理台" }}</div>
         <div class="user">
-          <el-badge v-if="auth.isAdmin && unresolvedCount > 0" :value="unresolvedCount" class="header-badge">
-            <span class="alert-link" @click="router.push('/ai-errors')">错误日志待处理</span>
+          <el-badge
+            v-if="auth.isAdmin && unresolvedCount > 0"
+            :value="unresolvedCount"
+            class="header-badge"
+          >
+            <span class="alert-link" @click="router.push('/ai-errors')"
+              >错误日志待处理</span
+            >
           </el-badge>
           <span>{{ auth.user?.username }} ({{ auth.user?.role }})</span>
           <el-button link type="danger" @click="onLogout">退出</el-button>
@@ -57,45 +71,55 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ChatDotRound, ChatLineRound, Cpu, Document, EditPen, Key, User, Warning } from '@element-plus/icons-vue'
-import * as api from '@/api/admin'
-import { useAuthStore } from '@/stores/auth'
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import {
+  ChatDotRound,
+  ChatLineRound,
+  Cpu,
+  Document,
+  EditPen,
+  Key,
+  QuestionFilled,
+  User,
+  Warning,
+} from "@element-plus/icons-vue";
+import * as api from "@/api/admin";
+import { useAuthStore } from "@/stores/auth";
 
-const route = useRoute()
-const router = useRouter()
-const auth = useAuthStore()
-const unresolvedCount = ref(0)
-let timer: number | undefined
+const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
+const unresolvedCount = ref(0);
+let timer: number | undefined;
 
 async function refreshErrors() {
-  if (!auth.isAdmin) return
+  if (!auth.isAdmin) return;
   try {
-    const { data } = await api.getAIErrorUnresolvedCount()
-    unresolvedCount.value = data.count || 0
+    const { data } = await api.getAIErrorUnresolvedCount();
+    unresolvedCount.value = data.count || 0;
   } catch {
-    unresolvedCount.value = 0
+    unresolvedCount.value = 0;
   }
 }
 
 function onLogout() {
-  auth.logout()
-  router.push('/login')
+  auth.logout();
+  router.push("/login");
 }
 
 onMounted(() => {
-  void refreshErrors()
+  void refreshErrors();
   timer = window.setInterval(() => {
-    void refreshErrors()
-  }, 30000)
-})
+    void refreshErrors();
+  }, 30000);
+});
 
 onBeforeUnmount(() => {
   if (timer) {
-    window.clearInterval(timer)
+    window.clearInterval(timer);
   }
-})
+});
 </script>
 
 <style scoped>

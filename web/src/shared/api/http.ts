@@ -18,7 +18,7 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (resp) => {
     const body = resp.data
-    if (body && typeof body.code === 'number' && body.code !== 0) {
+    if (body && typeof body.code === 'number' && body.code !== 200) {
       ElMessage.error(body.message || '请求失败')
       return Promise.reject(new Error(body.message || '请求失败'))
     }

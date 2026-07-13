@@ -183,7 +183,7 @@ async function save() {
     } else {
       await api.createProviderProfile(props.kind, payload)
     }
-    ElMessage.success('已保存，重启服务后生效')
+    ElMessage.success('已保存；启用该配置后立即生效')
     dialog.value = false
     await load()
   } finally {

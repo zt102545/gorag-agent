@@ -21,6 +21,7 @@ type Deps struct {
 	SettingsHandler     *handler.SettingsHandler
 	AdminSessionHandler *handler.AdminSessionHandler
 	AIErrorHandler      *handler.AIErrorHandler
+	UnansweredHandler   *handler.UnansweredHandler
 }
 
 func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
@@ -78,6 +79,16 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 			{
 				sessions.GET("", deps.AdminSessionHandler.List)
 				sessions.GET("/:id", deps.AdminSessionHandler.Get)
+			}
+			unansweredRead := authed.Group("/unanswered-questions", middleware.RequireRole(auth.RoleViewer))
+			{
+				unansweredRead.GET("", deps.UnansweredHandler.List)
+			}
+			unansweredWrite := authed.Group("/unanswered-questions", middleware.RequireRole(auth.RoleEditor))
+			{
+				unansweredWrite.PUT("/:id", deps.UnansweredHandler.Update)
+				unansweredWrite.POST("/:id/convert", deps.UnansweredHandler.Convert)
+				unansweredWrite.DELETE("/:id", deps.UnansweredHandler.Delete)
 			}
 
 			// GM 测试客服（与 Biz 共用同一套对话能力，JWT 鉴权）
@@ -145,6 +156,19 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.GET("/sessions/:id", deps.AdminSessionHandler.GMGet)
 		gm.GET("/prompts", deps.SettingsHandler.GMListPrompts)
 		gm.PUT("/prompts/:key", deps.SettingsHandler.GMUpdatePrompt)
+		gm.GET("/providers/:kind", deps.SettingsHandler.ListProviderProfiles)
+		gm.POST("/providers/:kind", deps.SettingsHandler.CreateProviderProfile)
+		gm.PUT("/providers/:kind/:id", deps.SettingsHandler.UpdateProviderProfile)
+		gm.PUT("/providers/:kind/:id/activate", deps.SettingsHandler.ActivateProviderProfile)
+		gm.DELETE("/providers/:kind/:id", deps.SettingsHandler.DeleteProviderProfile)
+		gm.GET("/caller-tokens", deps.CallerTokenHandler.List)
+		gm.POST("/caller-tokens", deps.CallerTokenHandler.Create)
+		gm.PUT("/caller-tokens/:id", deps.CallerTokenHandler.Update)
+		gm.DELETE("/caller-tokens/:id", deps.CallerTokenHandler.Delete)
+		gm.GET("/unanswered-questions", deps.UnansweredHandler.GMList)
+		gm.PUT("/unanswered-questions/:id", deps.UnansweredHandler.GMUpdate)
+		gm.POST("/unanswered-questions/:id/convert", deps.UnansweredHandler.GMConvert)
+		gm.DELETE("/unanswered-questions/:id", deps.UnansweredHandler.GMDelete)
 
 		// Test chat only needs a caller token. It reuses the same BizAuth, session
 		// persistence and chat pipeline as external callers.

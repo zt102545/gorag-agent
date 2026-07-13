@@ -14,6 +14,7 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/config"
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
 	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
+	"github.com/yourorg/agent_customer_service/internal/knowledge/unanswered"
 	"github.com/yourorg/agent_customer_service/internal/observability"
 	"github.com/yourorg/agent_customer_service/internal/server"
 	"github.com/yourorg/agent_customer_service/internal/server/handler"
@@ -57,16 +58,10 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	sessionStore, sessionApp := newSessionModule(gdb)
 	checkpointStore := newCheckpointStore(redisClient, cfg)
 
-	chatModel, err := runtime.NewChatModel(ctx)
-	if err != nil {
-		_ = redisClient.Close()
-		return nil, nil, fmt.Errorf("create chat model: %w", err)
-	}
-	embedder, err := runtime.NewEmbedder(ctx)
-	if err != nil {
-		_ = redisClient.Close()
-		return nil, nil, fmt.Errorf("create embedder: %w", err)
-	}
+	// Keep stable wrappers in the long-lived services. They resolve the active
+	// profile at call time, so saving or activating a model profile is hot-applied.
+	chatModel := runtime.DynamicChatModel()
+	embedder := runtime.DynamicEmbedder()
 
 	vs, err := vectorstore.New(ctx, cfg.VectorStore, redisClient)
 	if err != nil {
@@ -80,6 +75,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		_ = redisClient.Close()
 		return nil, nil, err
 	}
+	unansweredService := unanswered.NewService(gdb)
 
 	ragService := rag.NewService(vs, embedder, cfg.VectorStore.TopK)
 	ragService.SetUseVectorForSearch(runtime.ResolveEmbeddingConfig(ctx).UseVectorForSearch)
@@ -105,7 +101,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	router := newHTTPRouter(cfg, &server.Deps{
 		Auth:                authSvc,
 		SessionHandler:      handler.NewSessionHandler(sessionApp),
-		ChatHandler:         handler.NewChatHandler(runner.Inner(), sessionStore, sseWriter, ragService, intentAnalyzer, settingsApp, aiErrorSvc),
+		ChatHandler:         handler.NewChatHandler(runner.Inner(), sessionStore, sseWriter, ragService, intentAnalyzer, settingsApp, aiErrorSvc, unansweredService),
 		ApprovalHandler:     handler.NewApprovalHandler(runner.Inner(), sessionStore, sseWriter),
 		KnowledgeHandler:    handler.NewKnowledgeHandler(knowledgeApp, knowledgeJobs, settingsApp),
 		AuthHandler:         handler.NewAuthHandler(authSvc),
@@ -114,6 +110,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		SettingsHandler:     handler.NewSettingsHandler(settingsApp),
 		AdminSessionHandler: handler.NewAdminSessionHandler(sessionApp),
 		AIErrorHandler:      handler.NewAIErrorHandler(aiErrorSvc),
+		UnansweredHandler:   handler.NewUnansweredHandler(unansweredService, knowledgeApp),
 	})
 
 	cleanup := func() {

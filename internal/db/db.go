@@ -80,6 +80,7 @@ func AutoMigrate(gdb *gorm.DB) error {
 		&AdminUser{},
 		&CallerToken{},
 		&QAItem{},
+		&UnansweredQuestion{},
 		&AIProvider{},
 		&AIProviderProfile{},
 		&Prompt{},

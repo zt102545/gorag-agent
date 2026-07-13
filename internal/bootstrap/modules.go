@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/redis/go-redis/v9"
@@ -35,10 +34,7 @@ func newKnowledgeModule(
 	runtime *settingsapp.RuntimeRegistry,
 ) (*qa.Service, *knowledgeapp.Service, *knowledgeapp.ClassificationJobService, error) {
 	embedCfg := runtime.ResolveEmbeddingConfig(ctx)
-	embedder, err := runtime.NewEmbedder(ctx)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("create embedder: %w", err)
-	}
+	embedder := runtime.DynamicEmbedder()
 	metaStore := qa.NewSQLMetaStore(gdb)
 	qaService := qa.NewService(metaStore, vs, embedder, redisClient, embedCfg.Dimensions)
 	return qaService, knowledgeapp.NewService(qaService), knowledgeapp.NewClassificationJobService(qaService), nil

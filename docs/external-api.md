@@ -21,7 +21,7 @@
 
 ```json
 {
-  "code": 0,
+  "code": 200,
   "message": "ok",
   "data": {}
 }
@@ -189,7 +189,7 @@ Authorization: Bearer <caller_token>
 
 ```json
 {
-  "code": 0,
+  "code": 200,
   "message": "ok",
   "data": {
     "id": "66ee0c4e-7f8b-4d35-99da-2a72ef97d901",
@@ -240,7 +240,7 @@ curl -X POST "http://localhost:8080/api/v1/biz/sessions" \
 
 ```json
 {
-  "code": 0,
+  "code": 200,
   "message": "ok",
   "data": {
     "id": "66ee0c4e-7f8b-4d35-99da-2a72ef97d901",
@@ -286,7 +286,7 @@ curl -X POST "http://localhost:8080/api/v1/biz/sessions" \
 
 ```json
 {
-  "code": 0,
+  "code": 200,
   "message": "ok",
   "data": {
     "total": 2,
@@ -335,7 +335,7 @@ curl "http://localhost:8080/api/v1/biz/users/user_10001/sessions?page=1&size=20"
 
 ```json
 {
-  "code": 0,
+  "code": 200,
   "message": "ok",
   "data": {
     "messages": [
@@ -581,7 +581,7 @@ curl -N -X POST "http://localhost:8080/api/v1/biz/sessions/66ee0c4e-7f8b-4d35-99
 
 ```json
 {
-  "code": 0,
+  "code": 200,
   "message": "ok",
   "data": {
     "answer": "通常会在 1-3 个工作日内原路退回。",

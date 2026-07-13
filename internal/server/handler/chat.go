@@ -16,6 +16,7 @@ import (
 	"github.com/yourorg/agent_customer_service/internal/admin"
 	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
+	"github.com/yourorg/agent_customer_service/internal/knowledge/unanswered"
 	"github.com/yourorg/agent_customer_service/internal/server/middleware"
 	"github.com/yourorg/agent_customer_service/internal/session"
 	"github.com/yourorg/agent_customer_service/pkg/response"
@@ -30,9 +31,10 @@ type ChatHandler struct {
 	intent       *rag.IntentAnalyzer
 	settings     *settingsapp.Service
 	aiErrors     *admin.AIErrorService
+	unanswered   *unanswered.Service
 }
 
-func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *sse.Writer, ragService *rag.Service, intent *rag.IntentAnalyzer, settings *settingsapp.Service, aiErrors *admin.AIErrorService) *ChatHandler {
+func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *sse.Writer, ragService *rag.Service, intent *rag.IntentAnalyzer, settings *settingsapp.Service, aiErrors *admin.AIErrorService, unansweredService *unanswered.Service) *ChatHandler {
 	return &ChatHandler{
 		runner:       runner,
 		sessionStore: sessionStore,
@@ -41,6 +43,7 @@ func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *s
 		intent:       intent,
 		settings:     settings,
 		aiErrors:     aiErrors,
+		unanswered:   unansweredService,
 	}
 }
 
@@ -73,6 +76,7 @@ type chatDecision struct {
 	SearchQuery      string
 	SearchHits       []rag.SearchHit
 	Trace            []chatTraceStep
+	Unanswered       bool
 }
 
 type chatTraceStep struct {
@@ -144,6 +148,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		response.InternalError(c, err.Error())
 		return
 	}
+	h.captureUnanswered(c.Request.Context(), decision, req.Message, sessionID, requestID, bizCtx)
 	if decision.Reply != "" {
 		persistCtx, cancel := persistenceContext(c.Request.Context())
 		defer cancel()
@@ -264,6 +269,7 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		response.InternalError(c, err.Error())
 		return
 	}
+	h.captureUnanswered(c.Request.Context(), decision, req.Question, "", requestID, bizCtx)
 	if decision.Reply != "" {
 		logChat(c, "stateless_ask_fallback", start, bizCtx, "", req.ClientMessageID)
 		response.OK(c, gin.H{
@@ -506,6 +512,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		"sources":   buildSources(hits),
 	}, nil, searchStart)
 	if len(hits) == 0 {
+		decision.Unanswered = true
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
 		decision.addTrace("route", "路由决策", "finished", "知识库无命中，使用无命中默认回复", nil, map[string]any{
@@ -524,6 +531,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 	case "high":
 		decision.Reply = strings.TrimSpace(hits[0].Answer)
 		if decision.Reply == "" {
+			decision.Unanswered = true
 			decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 			decision.UsedDefaultReply = true
 			decision.addTrace("route", "路由决策", "finished", "高置信命中没有答案，使用默认回复", nil, map[string]any{
@@ -540,6 +548,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 			"route": "agent_with_rag_context",
 		}, nil, time.Time{})
 	default:
+		decision.Unanswered = true
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
 		decision.addTrace("route", "路由决策", "finished", "低置信命中，使用无命中默认回复", nil, map[string]any{
@@ -599,6 +608,21 @@ func (h *ChatHandler) searchKnowledge(ctx context.Context, query string) ([]rag.
 		return nil, nil
 	}
 	return h.ragService.SearchHits(ctx, query)
+}
+
+func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecision, question, sessionID, requestID string, biz *middleware.BizContext) {
+	if !decision.Unanswered || h.unanswered == nil {
+		return
+	}
+	input := unanswered.CaptureInput{Question: question, SearchQuery: decision.SearchQuery, SessionID: sessionID, RequestID: requestID}
+	if biz != nil {
+		input.CallerUserID = biz.CallerUserID
+		input.ChannelID = biz.ChannelID
+		input.TenantID = biz.TenantID
+	}
+	if err := h.unanswered.Capture(ctx, input); err != nil {
+		h.reportAIError(ctx, "capture_unanswered", err.Error(), requestID, sessionID, "capture unanswered customer question")
+	}
 }
 
 func (h *ChatHandler) reportAIError(ctx context.Context, stage, message, requestID, sessionID, details string) {
