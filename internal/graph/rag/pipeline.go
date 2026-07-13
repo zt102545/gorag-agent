@@ -50,7 +50,7 @@ func (s *Service) Search(ctx context.Context, query string) (string, error) {
 
 func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, error) {
 	records, err := s.store.SearchText(ctx, query, s.textTopK())
-	if err != nil {
+	if err != nil && !s.useVectorForSearch {
 		return nil, fmt.Errorf("retrieve text documents: %w", err)
 	}
 	if !s.useVectorForSearch {
@@ -69,9 +69,12 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 		qv[i] = float32(v)
 	}
 
-	vectorRecords, err := s.store.Search(ctx, qv, s.topK)
-	if err != nil {
-		return nil, fmt.Errorf("retrieve documents: %w", err)
+	vectorRecords, vectorErr := s.store.Search(ctx, qv, s.topK)
+	if vectorErr != nil {
+		if err != nil {
+			return nil, fmt.Errorf("retrieve text documents: %v; retrieve vector documents: %w", err, vectorErr)
+		}
+		return nil, fmt.Errorf("retrieve documents: %w", vectorErr)
 	}
 	records = mergeRecords(records, vectorRecords, s.topK)
 	return searchHitsFromRecords(records), nil

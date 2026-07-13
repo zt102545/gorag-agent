@@ -89,6 +89,8 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 			unansweredRead := authed.Group("/unanswered-questions", middleware.RequireRole(auth.RoleViewer))
 			{
 				unansweredRead.GET("", deps.UnansweredHandler.List)
+				unansweredRead.GET("/stats", deps.UnansweredHandler.Stats)
+				unansweredRead.GET("/:id/events", deps.UnansweredHandler.Events)
 			}
 			unansweredWrite := authed.Group("/unanswered-questions", middleware.RequireRole(auth.RoleEditor))
 			{
@@ -185,6 +187,8 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.PUT("/caller-tokens/:id", deps.CallerTokenHandler.Update)
 		gm.DELETE("/caller-tokens/:id", deps.CallerTokenHandler.Delete)
 		gm.GET("/unanswered-questions", deps.UnansweredHandler.GMList)
+		gm.GET("/unanswered-questions/stats", deps.UnansweredHandler.GMStats)
+		gm.GET("/unanswered-questions/:id/events", deps.UnansweredHandler.GMEvents)
 		gm.PUT("/unanswered-questions/:id", deps.UnansweredHandler.GMUpdate)
 		gm.POST("/unanswered-questions/:id/convert", deps.UnansweredHandler.GMConvert)
 		gm.DELETE("/unanswered-questions/:id", deps.UnansweredHandler.GMDelete)

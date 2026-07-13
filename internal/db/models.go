@@ -124,6 +124,7 @@ type UnansweredQuestion struct {
 	Question      string      `gorm:"type:text;not null" json:"question"`
 	QuestionHash  string      `gorm:"size:64;uniqueIndex;not null" json:"-"`
 	SearchQuery   string      `gorm:"type:text" json:"search_query,omitempty"`
+	Reason        string      `gorm:"size:64;not null;index;default:no_hit" json:"reason"`
 	Status        string      `gorm:"size:32;not null;index;default:pending" json:"status"`
 	Occurrences   int         `gorm:"not null;default:1" json:"occurrences"`
 	Answer        string      `gorm:"type:text" json:"answer,omitempty"`
@@ -141,6 +142,30 @@ type UnansweredQuestion struct {
 }
 
 func (UnansweredQuestion) TableName() string { return "unanswered_questions" }
+
+// UnansweredQuestionEvent keeps every occurrence behind an aggregated
+// unanswered question. The aggregate is convenient for operations; events
+// preserve the evidence needed to understand and prioritise a knowledge gap.
+type UnansweredQuestionEvent struct {
+	ID               string    `gorm:"primaryKey;size:36" json:"id"`
+	QuestionID       string    `gorm:"size:36;not null;index" json:"question_id"`
+	Question         string    `gorm:"type:text;not null" json:"question"`
+	SearchQuery      string    `gorm:"type:text" json:"search_query,omitempty"`
+	Reason           string    `gorm:"size:64;not null;index" json:"reason"`
+	Intent           string    `gorm:"size:64;index" json:"intent,omitempty"`
+	IntentConfidence float64   `json:"intent_confidence,omitempty"`
+	HitCount         int       `json:"hit_count"`
+	TopScore         float64   `json:"top_score,omitempty"`
+	FinalAnswer      string    `gorm:"type:text" json:"final_answer,omitempty"`
+	SessionID        string    `gorm:"size:36;index" json:"session_id,omitempty"`
+	RequestID        string    `gorm:"size:128;index" json:"request_id,omitempty"`
+	CallerUserID     string    `gorm:"size:128;index" json:"caller_user_id,omitempty"`
+	ChannelID        string    `gorm:"size:128;index" json:"channel_id,omitempty"`
+	TenantID         string    `gorm:"size:128;index" json:"tenant_id,omitempty"`
+	CreatedAt        time.Time `gorm:"index" json:"created_at"`
+}
+
+func (UnansweredQuestionEvent) TableName() string { return "unanswered_question_events" }
 
 type AIProvider struct {
 	ID          string    `gorm:"primaryKey;size:36" json:"id"`

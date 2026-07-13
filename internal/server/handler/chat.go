@@ -77,6 +77,7 @@ type chatDecision struct {
 	SearchHits       []rag.SearchHit
 	Trace            []chatTraceStep
 	Unanswered       bool
+	UnansweredReason string
 }
 
 type chatTraceStep struct {
@@ -148,8 +149,8 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		response.InternalError(c, err.Error())
 		return
 	}
-	h.captureUnanswered(c.Request.Context(), decision, req.Message, sessionID, requestID, bizCtx)
 	if decision.Reply != "" {
+		h.captureUnanswered(c.Request.Context(), decision, req.Message, decision.Reply, sessionID, requestID, bizCtx)
 		persistCtx, cancel := persistenceContext(c.Request.Context())
 		defer cancel()
 		if err := h.sessionStore.AppendMessages(persistCtx, sessionID, session.AppendParams{
@@ -216,6 +217,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	}
 
 	content := strings.TrimSpace(assistantContent.String())
+	h.captureUnanswered(c.Request.Context(), decision, req.Message, content, sessionID, requestID, bizCtx)
 	if content != "" || len(assistantToolCalls) > 0 {
 		decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
 			"content_chars": len([]rune(content)),
@@ -269,8 +271,8 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		response.InternalError(c, err.Error())
 		return
 	}
-	h.captureUnanswered(c.Request.Context(), decision, req.Question, "", requestID, bizCtx)
 	if decision.Reply != "" {
+		h.captureUnanswered(c.Request.Context(), decision, req.Question, decision.Reply, "", requestID, bizCtx)
 		logChat(c, "stateless_ask_fallback", start, bizCtx, "", req.ClientMessageID)
 		response.OK(c, gin.H{
 			"answer":             decision.Reply,
@@ -315,6 +317,7 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 	}
 
 	answer := strings.TrimSpace(assistantContent.String())
+	h.captureUnanswered(c.Request.Context(), decision, req.Question, answer, "", requestID, bizCtx)
 	decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
 		"content_chars": len([]rune(answer)),
 		"tool_calls":    len(toolCalls),
@@ -475,6 +478,10 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		}, output, nil, intentStart)
 	}
 	if decision.Intent != nil && !decision.Intent.NeedSearch {
+		if decision.Intent.SearchSuggested {
+			decision.Unanswered = true
+			decision.UnansweredReason = unanswered.ReasonLowConfidence
+		}
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatOutOfScope, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
 		decision.addTrace("route", "路由决策", "finished", "意图分析认为不需要检索，使用默认回复", nil, map[string]any{
@@ -513,6 +520,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 	}, nil, searchStart)
 	if len(hits) == 0 {
 		decision.Unanswered = true
+		decision.UnansweredReason = unanswered.ReasonNoHit
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
 		decision.addTrace("route", "路由决策", "finished", "知识库无命中，使用无命中默认回复", nil, map[string]any{
@@ -532,6 +540,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		decision.Reply = strings.TrimSpace(hits[0].Answer)
 		if decision.Reply == "" {
 			decision.Unanswered = true
+			decision.UnansweredReason = unanswered.ReasonEmptyQAAnswer
 			decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 			decision.UsedDefaultReply = true
 			decision.addTrace("route", "路由决策", "finished", "高置信命中没有答案，使用默认回复", nil, map[string]any{
@@ -549,6 +558,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		}, nil, time.Time{})
 	default:
 		decision.Unanswered = true
+		decision.UnansweredReason = unanswered.ReasonLowConfidence
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
 		decision.addTrace("route", "路由决策", "finished", "低置信命中，使用无命中默认回复", nil, map[string]any{
@@ -610,11 +620,32 @@ func (h *ChatHandler) searchKnowledge(ctx context.Context, query string) ([]rag.
 	return h.ragService.SearchHits(ctx, query)
 }
 
-func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecision, question, sessionID, requestID string, biz *middleware.BizContext) {
-	if !decision.Unanswered || h.unanswered == nil {
+func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecision, question, finalAnswer, sessionID, requestID string, biz *middleware.BizContext) {
+	if h.unanswered == nil {
 		return
 	}
-	input := unanswered.CaptureInput{Question: question, SearchQuery: decision.SearchQuery, SessionID: sessionID, RequestID: requestID}
+	reason := decision.UnansweredReason
+	if !decision.Unanswered {
+		if len(decision.SearchHits) == 0 {
+			return
+		}
+		switch {
+		case strings.TrimSpace(finalAnswer) == "":
+			reason = unanswered.ReasonModelEmpty
+		case looksUnanswered(finalAnswer):
+			reason = unanswered.ReasonModelUnanswered
+		default:
+			return
+		}
+	}
+	input := unanswered.CaptureInput{Question: question, SearchQuery: decision.SearchQuery, Reason: reason, FinalAnswer: finalAnswer, SessionID: sessionID, RequestID: requestID, HitCount: len(decision.SearchHits)}
+	if decision.Intent != nil {
+		input.Intent = decision.Intent.Intent
+		input.IntentConfidence = decision.Intent.Confidence
+	}
+	if len(decision.SearchHits) > 0 {
+		input.TopScore = decision.SearchHits[0].Score
+	}
 	if biz != nil {
 		input.CallerUserID = biz.CallerUserID
 		input.ChannelID = biz.ChannelID
@@ -623,6 +654,16 @@ func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecisi
 	if err := h.unanswered.Capture(ctx, input); err != nil {
 		h.reportAIError(ctx, "capture_unanswered", err.Error(), requestID, sessionID, "capture unanswered customer question")
 	}
+}
+
+func looksUnanswered(answer string) bool {
+	normalized := normalizeRuleText(answer)
+	for _, marker := range []string{"不知道", "不清楚", "无法回答", "无法确定", "没有足够信息", "未找到相关", "知识库中没有", "建议咨询人工", "请联系人工客服"} {
+		if strings.Contains(normalized, normalizeRuleText(marker)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *ChatHandler) reportAIError(ctx context.Context, stage, message, requestID, sessionID, details string) {
@@ -740,7 +781,10 @@ func evaluateHitLevel(query string, hits []rag.SearchHit) string {
 	if overlapRatio(q, top) >= 0.6 {
 		return "high"
 	}
-	return "mid"
+	if overlapRatio(q, top) >= 0.25 {
+		return "mid"
+	}
+	return "low"
 }
 
 func overlapRatio(a, b string) float64 {

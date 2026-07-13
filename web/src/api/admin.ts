@@ -246,6 +246,12 @@ export function getSession(id: string) {
 export function listUnansweredQuestions(params: Record<string, any>) {
   return http.get("/unanswered-questions", { params });
 }
+export function getUnansweredStats() {
+  return http.get("/unanswered-questions/stats");
+}
+export function listUnansweredEvents(id: string) {
+  return http.get(`/unanswered-questions/${id}/events`);
+}
 export function updateUnansweredQuestion(id: string, data: any) {
   return http.put(`/unanswered-questions/${id}`, data);
 }

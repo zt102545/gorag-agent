@@ -21,6 +21,9 @@ type IntentResult struct {
 	NeedSearch bool    `json:"need_search"`
 	Confidence float64 `json:"confidence"`
 	Reason     string  `json:"reason"`
+	// SearchSuggested preserves the model's decision before the confidence
+	// gate, so a likely business question is not silently lost from the gap pool.
+	SearchSuggested bool `json:"-"`
 }
 
 type IntentAnalyzer struct {
@@ -71,6 +74,7 @@ func (a *IntentAnalyzer) Analyze(ctx context.Context, query string) (*IntentResu
 	if out.Confidence <= 0 {
 		out.Confidence = 0.5
 	}
+	out.SearchSuggested = out.NeedSearch
 	// Apply threshold gate: low confidence means "do not search" unless explicitly high.
 	if out.NeedSearch && out.Confidence < a.threshold {
 		out.NeedSearch = false
