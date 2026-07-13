@@ -71,6 +71,13 @@ func (s *RedisStore) Delete(ctx context.Context, sessionID string) error {
 	return err
 }
 
+func (s *RedisStore) ClearMessages(ctx context.Context, sessionID string) error {
+	if _, err := s.Get(ctx, sessionID); err != nil {
+		return err
+	}
+	return s.client.Del(ctx, messagesKey(sessionID)).Err()
+}
+
 func (s *RedisStore) GetMessages(ctx context.Context, sessionID string) ([]*schema.Message, error) {
 	data, err := s.client.Get(ctx, messagesKey(sessionID)).Bytes()
 	if err == redis.Nil {
@@ -82,6 +89,9 @@ func (s *RedisStore) GetMessages(ctx context.Context, sessionID string) ([]*sche
 	var messages []*schema.Message
 	if err := json.Unmarshal(data, &messages); err != nil {
 		return nil, err
+	}
+	if len(messages) > 50 {
+		messages = messages[len(messages)-50:]
 	}
 	return messages, nil
 }
@@ -113,6 +123,9 @@ func (s *RedisStore) AppendMessages(ctx context.Context, sessionID string, param
 		}
 	}
 	merged := append(existing, messages...)
+	if len(merged) > 50 {
+		merged = merged[len(merged)-50:]
+	}
 	payload, err := json.Marshal(merged)
 	if err != nil {
 		return err

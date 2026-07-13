@@ -57,24 +57,49 @@ func (s *SQLStore) Get(ctx context.Context, sessionID string) (*Meta, error) {
 }
 
 func (s *SQLStore) Delete(ctx context.Context, sessionID string) error {
-	now := time.Now()
-	res := s.db.WithContext(ctx).Model(&db.Session{}).Where("id = ?", sessionID).Updates(map[string]any{
-		"status":     "closed",
-		"closed_at":  now,
-		"updated_at": now,
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&db.Session{}).Where("id = ?", sessionID).Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("session not found: %s", sessionID)
+		}
+		if err := tx.Where("session_id = ?", sessionID).Delete(&db.Message{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", sessionID).Delete(&db.Session{}).Error
 	})
-	if res.Error != nil {
-		return res.Error
+}
+
+func (s *SQLStore) ClearMessages(ctx context.Context, sessionID string) error {
+	if _, err := s.Get(ctx, sessionID); err != nil {
+		return err
 	}
-	if res.RowsAffected == 0 {
-		return fmt.Errorf("session not found: %s", sessionID)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("session_id = ?", sessionID).Delete(&db.Message{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&db.Session{}).Where("id = ?", sessionID).Updates(map[string]any{"title": "", "updated_at": time.Now()}).Error
+	})
+}
+
+const historyMessageLimit = 50
+
+func (s *SQLStore) recentMessageRows(ctx context.Context, sessionID string) ([]db.Message, error) {
+	var rows []db.Message
+	if err := s.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at desc").Limit(historyMessageLimit).Find(&rows).Error; err != nil {
+		return nil, err
 	}
-	return nil
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+	return rows, nil
 }
 
 func (s *SQLStore) GetMessages(ctx context.Context, sessionID string) ([]*schema.Message, error) {
-	var rows []db.Message
-	if err := s.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at asc").Find(&rows).Error; err != nil {
+	rows, err := s.recentMessageRows(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
 	out := make([]*schema.Message, 0, len(rows))
@@ -89,8 +114,8 @@ func (s *SQLStore) GetMessages(ctx context.Context, sessionID string) ([]*schema
 }
 
 func (s *SQLStore) GetMessageViews(ctx context.Context, sessionID string) ([]MessageView, error) {
-	var rows []db.Message
-	if err := s.db.WithContext(ctx).Where("session_id = ?", sessionID).Order("created_at asc").Find(&rows).Error; err != nil {
+	rows, err := s.recentMessageRows(ctx, sessionID)
+	if err != nil {
 		return nil, err
 	}
 	out := make([]MessageView, 0, len(rows))
@@ -159,6 +184,16 @@ func (s *SQLStore) AppendMessages(ctx context.Context, sessionID string, params 
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&rows).Error; err != nil {
 			return err
+		}
+		var expiredIDs []string
+		if err := tx.Model(&db.Message{}).Where("session_id = ?", sessionID).
+			Order("created_at desc").Limit(-1).Offset(historyMessageLimit).Pluck("id", &expiredIDs).Error; err != nil {
+			return err
+		}
+		if len(expiredIDs) > 0 {
+			if err := tx.Where("id IN ?", expiredIDs).Delete(&db.Message{}).Error; err != nil {
+				return err
+			}
 		}
 		updates := map[string]any{
 			"updated_at": now,

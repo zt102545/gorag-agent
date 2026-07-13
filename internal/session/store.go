@@ -71,6 +71,7 @@ type Store interface {
 	Create(ctx context.Context, params CreateParams) (*Meta, error)
 	Get(ctx context.Context, sessionID string) (*Meta, error)
 	Delete(ctx context.Context, sessionID string) error
+	ClearMessages(ctx context.Context, sessionID string) error
 	GetMessages(ctx context.Context, sessionID string) ([]*schema.Message, error)
 	AppendMessages(ctx context.Context, sessionID string, params AppendParams, messages ...*schema.Message) error
 }

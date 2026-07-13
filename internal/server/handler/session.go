@@ -86,6 +86,14 @@ func (h *SessionHandler) Delete(c *gin.Context) {
 	response.OK(c, gin.H{"deleted": true})
 }
 
+func (h *SessionHandler) ClearHistory(c *gin.Context) {
+	if err := h.service.ClearHistory(c.Request.Context(), c.Param("id")); err != nil {
+		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"cleared": true})
+}
+
 func (h *SessionHandler) ListByUser(c *gin.Context) {
 	page := 1
 	size := 20

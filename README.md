@@ -159,6 +159,8 @@ vector_store:
 | POST | `/sessions` | 创建会话 |
 | GET | `/sessions/:id` | 详情 |
 | GET | `/sessions/:id/history` | 历史 |
+| DELETE | `/sessions/:id/history` | 清空会话消息 |
+| DELETE | `/sessions/:id` | 永久删除会话及消息 |
 | DELETE | `/sessions/:id` | 关闭会话（消息保留） |
 | POST | `/sessions/:id/chat` | SSE 对话 |
 | POST | `/sessions/:id/approve` | HITL 审批 |

@@ -1,74 +1,83 @@
-# H5 客服聊天控件
+# H5 客服聊天控件接入文档
 
-控件使用绑定用户和渠道的短期 Token 调用 Biz API。`App Secret` 只保存在渠道服务端，不能出现在 H5、JavaScript 包或浏览器请求中。
+控件支持 SSE 流式回答、新建对话、最近 50 条历史消息、历史会话续聊、清空消息和删除会话。会话 ID 会按“租户 + 渠道 + 用户”保存在浏览器 `localStorage`，刷新页面后自动恢复。
 
-## 生产接入流程
+## 生产接入（推荐）
 
-1. 在 GM「接入应用」创建应用，取得 `App ID` 和只显示一次的 `App Secret`。
-2. 渠道服务端提供自己的换票接口，例如 `POST /api/customer-service/token`。它从登录态确认真实用户 ID，再用 App 凭证调用客服服务换票。
-3. H5 控件配置渠道换票地址和当前用户 ID。控件自动缓存短期 Token，并在过期前刷新。
+`App Secret` 只能保存在渠道服务端，不能写进 H5 或 JavaScript 包。完整流程：
+
+1. 在 GM 创建接入应用并取得 `App ID`、`App Secret`。
+2. 渠道服务端根据自身登录态确认真实用户，再调用客服服务的 `POST /api/v1/biz/auth/token`。
+3. 渠道服务端向 H5 提供换票接口，控件缓存短期 Token 并在过期前刷新。
 
 ```html
-<script src="https://客服前端域名/customer-service-widget.js"></script>
-<customer-service-widget
-  api-base="https://客服接口域名"
-  token-endpoint="https://渠道域名/api/customer-service/token"
-  caller-user-id="当前登录用户ID"
-  channel-id="h5"
-  tenant-id="tenant-a">
-</customer-service-widget>
+<script src="https://客服静态资源域名/customer-service-widget.js"></script>
+<customer-service-widget api-base="https://客服接口域名" token-endpoint="https://业务域名/api/customer-service/token" caller-user-id="当前登录用户ID" channel-id="h5" tenant-id="tenant-a" title="在线客服" primary-color="#246bfd"></customer-service-widget>
 ```
 
-渠道换票接口接收控件传入的 `caller_user_id`、`channel_id`、`tenant_id`，但必须用渠道自身登录态校验或覆盖 `caller_user_id`，防止冒用其他用户。渠道服务端随后调用：
+渠道换票接口必须用服务端登录态校验或覆盖前端提交的 `caller_user_id`，防止冒用其他用户。服务端换票请求：
 
 ```http
 POST /api/v1/biz/auth/token
 Content-Type: application/json
 
-{
-  "app_id": "app_xxx",
-  "app_secret": "as_xxx",
-  "caller_user_id": "user_10001",
-  "channel_id": "h5",
-  "tenant_id": "tenant-a"
-}
+{"app_id":"app_xxx","app_secret":"as_xxx","caller_user_id":"user_10001","channel_id":"h5","tenant_id":"tenant-a"}
 ```
 
-成功返回：
+向控件返回客服服务响应中的 `data`：
 
 ```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "access_token": "eyJ...",
-    "token_type": "Bearer",
-    "expires_in": 899,
-    "expires_at": "2026-07-13T12:15:00+08:00"
-  }
-}
+{"access_token":"eyJ...","token_type":"Bearer","expires_in":899,"expires_at":"2026-07-13T12:15:00+08:00"}
 ```
-
-渠道换票接口将 `data` 原样返回给控件即可。短期 Token 默认 15 分钟有效，绑定应用、用户、渠道和租户；Biz API 以 Token 内的身份为准，不接受前端用请求头覆盖。
-
-## 本地联调
-
-本地可以直接给控件配置 `app-id` 与 `app-secret`，但该方式仅限联调：
-
-```html
-<customer-service-widget api-base="http://127.0.0.1:8080" caller-user-id="demo-user" app-id="app_xxx" app-secret="as_xxx" channel-id="h5"></customer-service-widget>
-```
-
-演示页：`http://localhost:5173/widget-demo.html`。
 
 ## JavaScript 初始化
 
 ```js
 const widget = CustomerServiceWidget.create({
-  apiBase: 'https://客服接口域名',
-  tokenEndpoint: 'https://渠道域名/api/customer-service/token',
-  callerUserId: currentUser.id,
-  channelId: 'h5',
-  tenantId: 'tenant-a'
+  apiBase: 'https://客服接口域名', tokenEndpoint: '/api/customer-service/token',
+  callerUserId: currentUser.id, channelId: 'h5', tenantId: 'tenant-a',
+  title: '售后客服', greeting: '您好，请问需要什么帮助？',
+  position: 'right', primaryColor: '#246bfd'
 })
+widget.open()
+widget.close()
 ```
+
+## 配置项
+
+| HTML 属性 | JS 配置 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `api-base` | `apiBase` | 是 | Biz API 根域名 |
+| `caller-user-id` | `callerUserId` | 是 | 当前真实登录用户 ID |
+| `token-endpoint` | `tokenEndpoint` | 生产必填 | 渠道服务端换票地址 |
+| `channel-id` | `channelId` | 否 | 默认 `h5` |
+| `tenant-id` | `tenantId` | 否 | 租户/业务线标识 |
+| `title` / `greeting` | `title` / `greeting` | 否 | 标题和欢迎语 |
+| `position` | `position` | 否 | `left` 或 `right` |
+| `primary-color` | `primaryColor` | 否 | 主题色 |
+| `token` | `token` | 仅调试 | 已签发的用户 Token |
+| `app-id` / `app-secret` | `appId` / `appSecret` | 仅本地联调 | 严禁生产使用 |
+
+## 留存、清空、删除与续聊
+
+- 服务端每个会话仅留存最近 50 条消息；历史接口及模型上下文按时间正序使用这 50 条。
+- 控件保存当前 `session_id`，刷新后恢复历史并继续向同一会话发送消息。
+- 在历史列表选择任一会话，会把它设为当前会话并继续对话。
+- “清空消息”调用 `DELETE /api/v1/biz/sessions/:id/history`，永久删除消息但保留会话，可从空上下文续聊。
+- “删除会话”调用 `DELETE /api/v1/biz/sessions/:id`，永久删除会话及消息。
+- “新对话”创建新 `session_id`，旧会话仍可从历史列表恢复。
+
+## 跨域、安全和部署
+
+- 静态脚本可部署至 CDN；API 和换票接口须允许实际 H5 Origin。
+- 换票接口使用 Cookie 登录态时需允许 credentials；建议 CSP 的 `connect-src` 仅放行业务域名和客服 API。
+- 切换登录用户时更新 `caller-user-id`。存储键包含用户、渠道和租户，不会复用其他用户会话。
+- 不要在日志、埋点、URL 或前端持久化中记录 Token/App Secret。
+
+## 本地联调与样式验证
+
+```html
+<customer-service-widget api-base="http://127.0.0.1:8080" caller-user-id="demo-user" app-id="app_xxx" app-secret="as_xxx" channel-id="h5"></customer-service-widget>
+```
+
+访问 `http://localhost:5173/widget-demo.html`。建议验证桌面端、窄屏、移动端安全区和长文本；控件已使用 `100dvh`、滚动容器 `min-height: 0`、文本溢出保护和 Shadow DOM 样式隔离。

@@ -34,6 +34,10 @@ func (s *Service) Delete(ctx context.Context, sessionID string) error {
 	return s.store.Delete(ctx, sessionID)
 }
 
+func (s *Service) ClearHistory(ctx context.Context, sessionID string) error {
+	return s.store.ClearMessages(ctx, sessionID)
+}
+
 func (s *Service) History(ctx context.Context, sessionID string) ([]*sessiondomain.MessageView, error) {
 	views, err := s.store.GetMessageViews(ctx, sessionID)
 	if err != nil {
