@@ -65,6 +65,34 @@ func (h *KnowledgeHandler) GMImport(c *gin.Context) {
 	gmOK(c, result)
 }
 
+// GMCreate adds a single QA item using the response envelope expected by
+// Web-GM-Client.
+func (h *KnowledgeHandler) GMCreate(c *gin.Context) {
+	if !h.canUseEmbedding(c) {
+		return
+	}
+	var req qa.CreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	item, err := h.service.Create(c.Request.Context(), req)
+	if err != nil {
+		gmError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gmOK(c, item)
+}
+
+// GMDelete removes both the QA metadata and its vector index entry.
+func (h *KnowledgeHandler) GMDelete(c *gin.Context) {
+	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		gmError(c, http.StatusNotFound, err.Error())
+		return
+	}
+	gmOK(c, gin.H{"deleted": true})
+}
+
 func NewKnowledgeHandler(service *knowledgeapp.Service, jobs *knowledgeapp.ClassificationJobService, settings *settingsapp.Service) *KnowledgeHandler {
 	return &KnowledgeHandler{service: service, jobs: jobs, settings: settings}
 }

@@ -88,7 +88,9 @@ const widget = CustomerServiceWidget.create({
   channelId: 'website-main',
   callerUserId: currentUser.id,
   title: '在线客服',
-  greeting: '您好，请问有什么可以帮您？'
+  greeting: '您好，请问有什么可以帮您？',
+  primaryColor: '#0f766e',
+  secondaryColor: '#14b8a6'
 })
 
 widget.open()
@@ -108,7 +110,28 @@ widget.close()
 | `title` | `title` | 否 | `在线客服` |
 | `greeting` | `greeting` | 否 | 控件欢迎语 |
 | `position` | `position` | 否 | `right`，可设置为 `left` |
-| `primary-color` | `primaryColor` | 否 | `#246bfd` |
+| `primary-color` | `primaryColor` | 否 | 主色，默认 `#246bfd`，用于悬浮按钮、发送按钮、头像和用户消息 |
+| `secondary-color` | `secondaryColor` | 否 | 渐变辅色，默认 `#6854dc`，与主色组成标题栏渐变 |
+
+不配置配色时，控件使用默认蓝紫配色：主色 `#246bfd`、辅色 `#6854dc`。如需在调用时使用业务品牌色，可通过 HTML 属性传入：
+
+```html
+<customer-service-widget
+  channel-id="website-main"
+  caller-user-id="user_10001"
+  primary-color="#0f766e"
+  secondary-color="#14b8a6"
+></customer-service-widget>
+```
+
+也可以动态更新已经创建的控件：
+
+```js
+widget.configure({
+  primaryColor: '#0f766e',
+  secondaryColor: '#14b8a6'
+})
+```
 
 左下角显示示例：
 
