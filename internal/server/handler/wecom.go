@@ -45,6 +45,15 @@ func (h *WeComHandler) GMTest(c *gin.Context) {
 	gmOK(c, gin.H{"connected": true})
 }
 
+func (h *WeComHandler) GMPermitUsers(c *gin.Context) {
+	rows, err := h.service.ListArchiveUsers(c.Request.Context())
+	if err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	gmOK(c, rows)
+}
+
 func (h *WeComHandler) GMSync(c *gin.Context) {
 	result, err := h.service.SyncNow(c.Request.Context())
 	if err != nil {
@@ -134,6 +143,15 @@ func (h *WeComHandler) Test(c *gin.Context) {
 		return
 	}
 	response.OK(c, gin.H{"connected": true})
+}
+
+func (h *WeComHandler) PermitUsers(c *gin.Context) {
+	rows, err := h.service.ListArchiveUsers(c.Request.Context())
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, rows)
 }
 
 func (h *WeComHandler) Sync(c *gin.Context) {

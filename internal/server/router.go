@@ -69,6 +69,7 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 			wecomRead := authed.Group("/wecom", middleware.RequireRole(auth.RoleViewer))
 			{
 				wecomRead.GET("/config", deps.WeComHandler.GetConfig)
+				wecomRead.GET("/permit-users", deps.WeComHandler.PermitUsers)
 				wecomRead.GET("/messages", deps.WeComHandler.Messages)
 				wecomRead.GET("/conversations", deps.WeComHandler.Conversations)
 				wecomRead.GET("/conversations/:id/messages", deps.WeComHandler.ConversationMessages)
@@ -210,6 +211,7 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.POST("/unanswered-questions/:id/convert", deps.UnansweredHandler.GMConvert)
 		gm.DELETE("/unanswered-questions/:id", deps.UnansweredHandler.GMDelete)
 		gm.GET("/wecom/config", deps.WeComHandler.GMGetConfig)
+		gm.GET("/wecom/permit-users", deps.WeComHandler.GMPermitUsers)
 		gm.PUT("/wecom/config", deps.WeComHandler.GMSaveConfig)
 		gm.POST("/wecom/test", deps.WeComHandler.GMTest)
 		gm.POST("/wecom/sync", deps.WeComHandler.GMSync)

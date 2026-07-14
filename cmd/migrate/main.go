@@ -81,7 +81,7 @@ func main() {
 			log.Printf("table %-28s skipped (not present in source)", table.Table)
 			continue
 		}
-		log.Printf("table %-28s source=%d copied=%d target=%d", table.Table, table.SourceRows, table.CopiedRows, table.TargetRows)
+		log.Printf("table %-28s source=%d copied=%d target=%d sanitized_strings=%d", table.Table, table.SourceRows, table.CopiedRows, table.TargetRows, table.SanitizedStrings)
 	}
 	log.Printf("migration completed: copied %d rows", result.CopiedRows())
 }

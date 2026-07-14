@@ -28,13 +28,14 @@ const singletonConfigID = "default"
 type ModelFactory func(context.Context) (model.ToolCallingChatModel, error)
 
 type Service struct {
-	db         *gorm.DB
-	sdkFactory wecomsdk.Factory
-	rag        *rag.Service
-	newModel   ModelFactory
-	unanswered *unanswered.Service
-	codec      secretCodec
-	runMu      sync.Mutex
+	db          *gorm.DB
+	sdkFactory  wecomsdk.Factory
+	rag         *rag.Service
+	newModel    ModelFactory
+	unanswered  *unanswered.Service
+	permitUsers permitUserProvider
+	codec       secretCodec
+	runMu       sync.Mutex
 }
 
 func NewService(gdb *gorm.DB, sdkFactory wecomsdk.Factory, ragService *rag.Service, newModel ModelFactory, unansweredService *unanswered.Service, encryptionKeys ...string) *Service {
@@ -42,7 +43,7 @@ func NewService(gdb *gorm.DB, sdkFactory wecomsdk.Factory, ragService *rag.Servi
 	if len(encryptionKeys) > 0 && strings.TrimSpace(encryptionKeys[0]) != "" {
 		key = encryptionKeys[0]
 	}
-	return &Service{db: gdb, sdkFactory: sdkFactory, rag: ragService, newModel: newModel, unanswered: unansweredService, codec: newSecretCodec(key)}
+	return &Service{db: gdb, sdkFactory: sdkFactory, rag: ragService, newModel: newModel, unanswered: unansweredService, permitUsers: newWeComAPIClient(), codec: newSecretCodec(key)}
 }
 
 type ConfigInput struct {
@@ -198,6 +199,17 @@ func (s *Service) TestConnection(ctx context.Context) error {
 	defer client.Close()
 	_, err = client.Pull(ctx, row.LastSeq, 1)
 	return err
+}
+
+func (s *Service) ListArchiveUsers(ctx context.Context) ([]string, error) {
+	row, err := s.runtimeConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(row.CorpID) == "" || strings.TrimSpace(row.Secret) == "" {
+		return nil, fmt.Errorf("save corp_id and the conversation archive secret before loading members")
+	}
+	return s.permitUsers.ListPermitUsers(ctx, row.CorpID, row.Secret)
 }
 
 type SyncResult struct {

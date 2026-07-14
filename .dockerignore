@@ -6,3 +6,5 @@ data/*.db-*
 web/node_modules
 web/dist
 *.log
+/agent_linux
+/migrate_linux

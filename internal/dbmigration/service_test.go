@@ -25,7 +25,7 @@ func TestServiceRun_CopiesAndCanUpsertAllModels(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	admin := appdb.AdminUser{ID: "admin-1", Username: "admin", PasswordHash: "hash", Role: "admin", CreatedAt: now, UpdatedAt: now}
-	session := appdb.Session{ID: "session-1", Status: "active", Meta: appdb.JSONMap{"channel": "web", "attempt": float64(1)}, CreatedAt: now, UpdatedAt: now}
+	session := appdb.Session{ID: "session-1", Title: string([]byte{'o', 'k', 0xff}), Status: "active", Meta: appdb.JSONMap{"channel": "web", "attempt": float64(1)}, CreatedAt: now, UpdatedAt: now}
 	message := appdb.Message{ID: "message-1", SessionID: session.ID, Role: "user", Content: "hello", CreatedAt: now}
 	caller := appdb.CallerToken{
 		ID: "caller-1", Name: "website", TokenHash: "token-hash", Prefix: "tok", Enabled: true,
@@ -52,6 +52,16 @@ func TestServiceRun_CopiesAndCanUpsertAllModels(t *testing.T) {
 	}
 	if gotSession.Meta["channel"] != "web" {
 		t.Fatalf("session meta = %#v", gotSession.Meta)
+	}
+	if gotSession.Title != "ok\uFFFD" {
+		t.Fatalf("session title = %q, want repaired UTF-8", gotSession.Title)
+	}
+	var sanitized int64
+	for _, table := range result.Tables {
+		sanitized += table.SanitizedStrings
+	}
+	if sanitized != 1 {
+		t.Fatalf("sanitized strings = %d, want 1", sanitized)
 	}
 	var gotCaller appdb.CallerToken
 	if err := target.First(&gotCaller, "id = ?", caller.ID).Error; err != nil {

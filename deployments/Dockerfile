@@ -1,7 +1,10 @@
-FROM golang:1.25-bookworm AS builder
+FROM quay.io/pypa/manylinux2014_x86_64:latest AS builder
+
+ARG GO_VERSION=1.25.1
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .

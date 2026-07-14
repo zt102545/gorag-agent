@@ -324,10 +324,7 @@ func toMessageView(row db.Message) MessageView {
 
 func trimPreview(content string) string {
 	content = strings.TrimSpace(content)
-	if len(content) <= 80 {
-		return content
-	}
-	return content[:80] + "..."
+	return truncateRunes(content, 80)
 }
 
 func firstUserTitle(messages []*schema.Message) string {
@@ -341,10 +338,15 @@ func firstUserTitle(messages []*schema.Message) string {
 		}
 		title = strings.ReplaceAll(title, "\r", " ")
 		title = strings.ReplaceAll(title, "\n", " ")
-		if len(title) <= 40 {
-			return title
-		}
-		return title[:40] + "..."
+		return truncateRunes(title, 40)
 	}
 	return ""
+}
+
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "..."
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
+	"unicode/utf8"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -22,11 +24,12 @@ type Options struct {
 }
 
 type TableResult struct {
-	Table      string
-	SourceRows int64
-	TargetRows int64
-	CopiedRows int64
-	Skipped    bool
+	Table            string
+	SourceRows       int64
+	TargetRows       int64
+	CopiedRows       int64
+	SanitizedStrings int64
+	Skipped          bool
 }
 
 type Result struct {
@@ -156,6 +159,7 @@ func migrateTable[T any](ctx context.Context, source, target *gorm.DB, batchSize
 
 	var rows []T
 	err := source.WithContext(ctx).FindInBatches(&rows, batchSize, func(_ *gorm.DB, _ int) error {
+		result.SanitizedStrings += sanitizeInvalidUTF8(reflect.ValueOf(&rows))
 		if err := target.WithContext(ctx).
 			Clauses(clause.OnConflict{UpdateAll: true}).
 			Create(&rows).Error; err != nil {
@@ -180,6 +184,73 @@ func migrateTable[T any](ctx context.Context, source, target *gorm.DB, batchSize
 		return result, fmt.Errorf("verify table %s: target has %d rows, source has %d", result.Table, result.TargetRows, result.SourceRows)
 	}
 	return result, nil
+}
+
+// sanitizeInvalidUTF8 replaces malformed byte sequences in strings before a
+// strict destination such as MySQL rejects the entire migration batch. SQLite
+// permits arbitrary bytes in TEXT values, so legacy data can contain strings
+// that are not valid UTF-8.
+func sanitizeInvalidUTF8(value reflect.Value) int64 {
+	if !value.IsValid() {
+		return 0
+	}
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return 0
+		}
+		return sanitizeInvalidUTF8(value.Elem())
+	}
+
+	switch value.Kind() {
+	case reflect.String:
+		if value.CanSet() && !utf8.ValidString(value.String()) {
+			value.SetString(strings.ToValidUTF8(value.String(), "\uFFFD"))
+			return 1
+		}
+	case reflect.Interface:
+		if value.IsNil() || !value.CanSet() {
+			return 0
+		}
+		copyValue := reflect.New(value.Elem().Type()).Elem()
+		copyValue.Set(value.Elem())
+		count := sanitizeInvalidUTF8(copyValue)
+		if count > 0 {
+			value.Set(copyValue)
+		}
+		return count
+	case reflect.Struct:
+		var count int64
+		for i := 0; i < value.NumField(); i++ {
+			if value.Field(i).CanSet() {
+				count += sanitizeInvalidUTF8(value.Field(i))
+			}
+		}
+		return count
+	case reflect.Slice, reflect.Array:
+		var count int64
+		for i := 0; i < value.Len(); i++ {
+			count += sanitizeInvalidUTF8(value.Index(i))
+		}
+		return count
+	case reflect.Map:
+		if value.IsNil() {
+			return 0
+		}
+		var count int64
+		iterator := value.MapRange()
+		for iterator.Next() {
+			item := iterator.Value()
+			copyValue := reflect.New(item.Type()).Elem()
+			copyValue.Set(item)
+			itemCount := sanitizeInvalidUTF8(copyValue)
+			if itemCount > 0 {
+				value.SetMapIndex(iterator.Key(), copyValue)
+				count += itemCount
+			}
+		}
+		return count
+	}
+	return 0
 }
 
 func verifyPrimaryKeys[T any](ctx context.Context, target *gorm.DB, model *T, stmt *gorm.Statement, rows []T) error {
