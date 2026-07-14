@@ -36,7 +36,7 @@ func (f *fakeClient) Decrypt(_ context.Context, record wecomsdk.EncryptedRecord,
 
 func (f *fakeClient) Close() error { return nil }
 
-func TestSyncNow_FiltersEmployeeGroupsAndText(t *testing.T) {
+func TestSyncNow_IncludesConfiguredGroupsAndDirectMessages(t *testing.T) {
 	gdb, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestSyncNow_FiltersEmployeeGroupsAndText(t *testing.T) {
 	if err := gdb.AutoMigrate(&db.WeComArchiveConfig{}, &db.WeComMessage{}); err != nil {
 		t.Fatal(err)
 	}
-	config := db.WeComArchiveConfig{ID: singletonConfigID, CorpID: "ww-test", Secret: "secret", PrivateKey: "private", PublicKeyVersion: 1, ArchiveUserID: "employee", GroupIDs: db.StringSlice{"room-1"}, PollIntervalSeconds: 10, AnalyzeIntervalSeconds: 600}
+	config := db.WeComArchiveConfig{ID: singletonConfigID, CorpID: "ww-test", Secret: "secret", PrivateKey: "private", PublicKeyVersion: 1, ArchiveUserID: "employee", GroupIDs: db.StringSlice{"room-1"}, PollIntervalSeconds: 10, AnalyzeTime: "23:50"}
 	if err := gdb.Create(&config).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +55,13 @@ func TestSyncNow_FiltersEmployeeGroupsAndText(t *testing.T) {
 		return msg
 	}
 	client := &fakeClient{
-		records: []wecomsdk.EncryptedRecord{{Seq: 1, MsgID: "m1", PublicKeyVersion: 1}, {Seq: 2, MsgID: "m2", PublicKeyVersion: 1}, {Seq: 3, MsgID: "m3", PublicKeyVersion: 1}, {Seq: 4, MsgID: "m4", PublicKeyVersion: 1}},
+		records: []wecomsdk.EncryptedRecord{{Seq: 1, MsgID: "m1", PublicKeyVersion: 1}, {Seq: 2, MsgID: "m2", PublicKeyVersion: 1}, {Seq: 3, MsgID: "m3", PublicKeyVersion: 1}, {Seq: 4, MsgID: "m4", PublicKeyVersion: 1}, {Seq: 5, MsgID: "m5", PublicKeyVersion: 1}},
 		plain: map[uint64]*wecomsdk.PlainMessage{
 			1: makeMessage("m1", "customer", "room-1", "text", "怎么退款？", []string{"employee"}),
 			2: makeMessage("m2", "employee", "room-1", "text", "请提供订单号", []string{"customer"}),
 			3: makeMessage("m3", "customer", "room-2", "text", "不在配置群", []string{"employee"}),
 			4: makeMessage("m4", "customer", "room-1", "image", "", []string{"employee"}),
+			5: makeMessage("m5", "wm-external", "", "text", "私聊消息", []string{"employee"}),
 		},
 	}
 	service := NewService(gdb, fakeFactory{client: client}, nil, nil, nil)
@@ -68,15 +69,47 @@ func TestSyncNow_FiltersEmployeeGroupsAndText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sync: %v", err)
 	}
-	if result.Pulled != 4 || result.Stored != 2 || result.LastSeq != 4 {
+	if result.Pulled != 5 || result.Stored != 3 || result.LastSeq != 5 {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	var rows []db.WeComMessage
 	if err := gdb.Order("seq").Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 || rows[0].Direction != "customer" || rows[1].Direction != "employee" {
+	if len(rows) != 3 || rows[0].Direction != "customer" || rows[1].Direction != "employee" || rows[2].RoomID != "" {
 		t.Fatalf("unexpected stored messages: %#v", rows)
+	}
+	conversations, err := service.ListConversations(context.Background(), time.Now().Format("2006-01-02"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversations) != 2 {
+		t.Fatalf("unexpected conversations: %#v", conversations)
+	}
+	foundDirect := false
+	for _, conversation := range conversations {
+		foundDirect = foundDirect || conversation.ID == "direct:wm-external"
+	}
+	if !foundDirect {
+		t.Fatalf("direct conversation was not listed: %#v", conversations)
+	}
+	directMessages, err := service.ListConversationMessages(context.Background(), "direct:wm-external", time.Now().Format("2006-01-02"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(directMessages) != 1 || directMessages[0].Content != "私聊消息" {
+		t.Fatalf("unexpected direct messages: %#v", directMessages)
+	}
+	view, err := service.SaveConfig(context.Background(), ConfigInput{CorpID: "ww-test", ArchiveUserID: "employee", GroupIDs: []string{"room-1"}, PollIntervalSeconds: 10, AnalyzeTime: "22:30"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.QAStartAt == nil || view.AnalyzeTime != "22:30" {
+		t.Fatalf("QA boundary was not initialized: %#v", view)
+	}
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	if _, err := service.AnalyzeDate(context.Background(), yesterday); err == nil {
+		t.Fatal("historical messages must not be analyzed into QA")
 	}
 }
 

@@ -70,6 +70,8 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 			{
 				wecomRead.GET("/config", deps.WeComHandler.GetConfig)
 				wecomRead.GET("/messages", deps.WeComHandler.Messages)
+				wecomRead.GET("/conversations", deps.WeComHandler.Conversations)
+				wecomRead.GET("/conversations/:id/messages", deps.WeComHandler.ConversationMessages)
 				wecomRead.GET("/analysis-runs", deps.WeComHandler.Runs)
 			}
 			wecomWrite := authed.Group("/wecom", middleware.RequireRole(auth.RoleAdmin))
@@ -213,6 +215,8 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.POST("/wecom/sync", deps.WeComHandler.GMSync)
 		gm.POST("/wecom/analyze", deps.WeComHandler.GMAnalyze)
 		gm.GET("/wecom/messages", deps.WeComHandler.GMMessages)
+		gm.GET("/wecom/conversations", deps.WeComHandler.GMConversations)
+		gm.GET("/wecom/conversations/:id/messages", deps.WeComHandler.GMConversationMessages)
 		gm.GET("/wecom/analysis-runs", deps.WeComHandler.GMRuns)
 
 		// Test chat only needs a caller token. It reuses the same BizAuth, session

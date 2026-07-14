@@ -87,6 +87,24 @@ func (h *WeComHandler) GMRuns(c *gin.Context) {
 	gmOK(c, rows)
 }
 
+func (h *WeComHandler) GMConversations(c *gin.Context) {
+	rows, err := h.service.ListConversations(c.Request.Context(), c.Query("date"))
+	if err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	gmOK(c, rows)
+}
+
+func (h *WeComHandler) GMConversationMessages(c *gin.Context) {
+	rows, err := h.service.ListConversationMessages(c.Request.Context(), c.Param("id"), c.Query("date"))
+	if err != nil {
+		gmError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	gmOK(c, rows)
+}
+
 func (h *WeComHandler) GetConfig(c *gin.Context) {
 	view, err := h.service.GetConfig(c.Request.Context())
 	if err != nil {
@@ -155,6 +173,24 @@ func (h *WeComHandler) Runs(c *gin.Context) {
 	rows, err := h.service.ListRuns(c.Request.Context(), 50)
 	if err != nil {
 		response.InternalError(c, err.Error())
+		return
+	}
+	response.OK(c, rows)
+}
+
+func (h *WeComHandler) Conversations(c *gin.Context) {
+	rows, err := h.service.ListConversations(c.Request.Context(), c.Query("date"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.OK(c, rows)
+}
+
+func (h *WeComHandler) ConversationMessages(c *gin.Context) {
+	rows, err := h.service.ListConversationMessages(c.Request.Context(), c.Param("id"), c.Query("date"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
 		return
 	}
 	response.OK(c, rows)

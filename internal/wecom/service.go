@@ -46,37 +46,39 @@ func NewService(gdb *gorm.DB, sdkFactory wecomsdk.Factory, ragService *rag.Servi
 }
 
 type ConfigInput struct {
-	CorpID                 string   `json:"corp_id"`
-	Secret                 string   `json:"secret"`
-	PrivateKey             string   `json:"private_key"`
-	PublicKeyVersion       int      `json:"public_key_version"`
-	ArchiveUserID          string   `json:"archive_user_id"`
-	GroupIDs               []string `json:"group_ids"`
-	Enabled                bool     `json:"enabled"`
-	PollIntervalSeconds    int      `json:"poll_interval_seconds"`
-	AnalyzeIntervalSeconds int      `json:"analyze_interval_seconds"`
+	CorpID              string   `json:"corp_id"`
+	Secret              string   `json:"secret"`
+	PrivateKey          string   `json:"private_key"`
+	PublicKeyVersion    int      `json:"public_key_version"`
+	ArchiveUserID       string   `json:"archive_user_id"`
+	GroupIDs            []string `json:"group_ids"`
+	Enabled             bool     `json:"enabled"`
+	PollIntervalSeconds int      `json:"poll_interval_seconds"`
+	AnalyzeTime         string   `json:"analyze_time"`
 }
 
 type ConfigView struct {
-	ID                     string     `json:"id"`
-	CorpID                 string     `json:"corp_id"`
-	HasSecret              bool       `json:"has_secret"`
-	HasPrivateKey          bool       `json:"has_private_key"`
-	PublicKeyVersion       int        `json:"public_key_version"`
-	ArchiveUserID          string     `json:"archive_user_id"`
-	GroupIDs               []string   `json:"group_ids"`
-	Enabled                bool       `json:"enabled"`
-	PollIntervalSeconds    int        `json:"poll_interval_seconds"`
-	AnalyzeIntervalSeconds int        `json:"analyze_interval_seconds"`
-	LastSeq                uint64     `json:"last_seq"`
-	LastSyncAt             *time.Time `json:"last_sync_at,omitempty"`
-	LastAnalyzeAt          *time.Time `json:"last_analyze_at,omitempty"`
-	LastError              string     `json:"last_error,omitempty"`
-	UpdatedAt              time.Time  `json:"updated_at"`
+	ID                  string     `json:"id"`
+	CorpID              string     `json:"corp_id"`
+	HasSecret           bool       `json:"has_secret"`
+	HasPrivateKey       bool       `json:"has_private_key"`
+	PublicKeyVersion    int        `json:"public_key_version"`
+	ArchiveUserID       string     `json:"archive_user_id"`
+	GroupIDs            []string   `json:"group_ids"`
+	Enabled             bool       `json:"enabled"`
+	PollIntervalSeconds int        `json:"poll_interval_seconds"`
+	AnalyzeTime         string     `json:"analyze_time"`
+	QAStartAt           *time.Time `json:"qa_start_at,omitempty"`
+	LastSeq             uint64     `json:"last_seq"`
+	LastSyncAt          *time.Time `json:"last_sync_at,omitempty"`
+	LastAnalyzeAt       *time.Time `json:"last_analyze_at,omitempty"`
+	LastAnalyzeDate     string     `json:"last_analyze_date,omitempty"`
+	LastError           string     `json:"last_error,omitempty"`
+	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
 func configView(row *db.WeComArchiveConfig) ConfigView {
-	return ConfigView{ID: row.ID, CorpID: row.CorpID, HasSecret: strings.TrimSpace(row.Secret) != "", HasPrivateKey: strings.TrimSpace(row.PrivateKey) != "", PublicKeyVersion: row.PublicKeyVersion, ArchiveUserID: row.ArchiveUserID, GroupIDs: []string(row.GroupIDs), Enabled: row.Enabled, PollIntervalSeconds: row.PollIntervalSeconds, AnalyzeIntervalSeconds: row.AnalyzeIntervalSeconds, LastSeq: row.LastSeq, LastSyncAt: row.LastSyncAt, LastAnalyzeAt: row.LastAnalyzeAt, LastError: row.LastError, UpdatedAt: row.UpdatedAt}
+	return ConfigView{ID: row.ID, CorpID: row.CorpID, HasSecret: strings.TrimSpace(row.Secret) != "", HasPrivateKey: strings.TrimSpace(row.PrivateKey) != "", PublicKeyVersion: row.PublicKeyVersion, ArchiveUserID: row.ArchiveUserID, GroupIDs: []string(row.GroupIDs), Enabled: row.Enabled, PollIntervalSeconds: row.PollIntervalSeconds, AnalyzeTime: row.AnalyzeTime, QAStartAt: row.QAStartAt, LastSeq: row.LastSeq, LastSyncAt: row.LastSyncAt, LastAnalyzeAt: row.LastAnalyzeAt, LastAnalyzeDate: row.LastAnalyzeDate, LastError: row.LastError, UpdatedAt: row.UpdatedAt}
 }
 
 func (s *Service) config(ctx context.Context) (*db.WeComArchiveConfig, error) {
@@ -88,7 +90,7 @@ func (s *Service) config(ctx context.Context) (*db.WeComArchiveConfig, error) {
 func (s *Service) GetConfig(ctx context.Context) (ConfigView, error) {
 	row, err := s.config(ctx)
 	if err == gorm.ErrRecordNotFound {
-		return ConfigView{ID: singletonConfigID, PublicKeyVersion: 1, PollIntervalSeconds: 10, AnalyzeIntervalSeconds: 600, GroupIDs: []string{}}, nil
+		return ConfigView{ID: singletonConfigID, PublicKeyVersion: 1, PollIntervalSeconds: 10, AnalyzeTime: "23:50", GroupIDs: []string{}}, nil
 	}
 	if err != nil {
 		return ConfigView{}, err
@@ -135,9 +137,12 @@ func (s *Service) SaveConfig(ctx context.Context, in ConfigInput) (ConfigView, e
 	if row.PollIntervalSeconds < 5 {
 		row.PollIntervalSeconds = 10
 	}
-	row.AnalyzeIntervalSeconds = in.AnalyzeIntervalSeconds
-	if row.AnalyzeIntervalSeconds < 60 {
-		row.AnalyzeIntervalSeconds = 600
+	row.AnalyzeTime = strings.TrimSpace(in.AnalyzeTime)
+	if row.AnalyzeTime == "" {
+		row.AnalyzeTime = "23:50"
+	}
+	if _, parseErr := time.Parse("15:04", row.AnalyzeTime); parseErr != nil {
+		return ConfigView{}, fmt.Errorf("analyze_time must use HH:mm")
 	}
 	if strings.TrimSpace(in.Secret) != "" {
 		row.Secret, err = s.codec.encrypt(in.Secret)
@@ -153,6 +158,9 @@ func (s *Service) SaveConfig(ctx context.Context, in ConfigInput) (ConfigView, e
 	}
 	if row.Enabled && (row.CorpID == "" || row.Secret == "" || row.PrivateKey == "" || row.ArchiveUserID == "") {
 		return ConfigView{}, fmt.Errorf("corp_id, secret, private_key and archive_user_id are required before enabling")
+	}
+	if row.QAStartAt == nil && row.CorpID != "" && row.Secret != "" && row.PrivateKey != "" && row.ArchiveUserID != "" {
+		row.QAStartAt = &now
 	}
 	row.UpdatedAt = now
 	if err := s.db.WithContext(ctx).Save(row).Error; err != nil {
@@ -214,8 +222,10 @@ func messageInScope(msg *wecomsdk.PlainMessage, cfg *db.WeComArchiveConfig) bool
 	if msg.From != cfg.ArchiveUserID && !contains(msg.ToList, cfg.ArchiveUserID) {
 		return false
 	}
-	if len(cfg.GroupIDs) > 0 {
-		if msg.RoomID == "" || !contains([]string(cfg.GroupIDs), msg.RoomID) {
+	// A group allowlist only filters group messages. Direct messages between
+	// the configured employee and private-chat users always remain in scope.
+	if msg.RoomID != "" && len(cfg.GroupIDs) > 0 {
+		if !contains([]string(cfg.GroupIDs), msg.RoomID) {
 			return false
 		}
 	}
@@ -422,16 +432,28 @@ func (s *Service) AnalyzeDate(ctx context.Context, date string) (AnalyzeResult, 
 	if err != nil {
 		return AnalyzeResult{}, err
 	}
+	if cfg.QAStartAt == nil {
+		return AnalyzeResult{}, fmt.Errorf("QA start time is not initialized; save a complete WeCom configuration first")
+	}
 	loc, _ := time.LoadLocation("Asia/Shanghai")
+	today := time.Now().In(loc).Format("2006-01-02")
 	if strings.TrimSpace(date) == "" {
-		date = time.Now().In(loc).Format("2006-01-02")
+		date = today
 	}
 	day, err := time.ParseInLocation("2006-01-02", date, loc)
 	if err != nil {
 		return AnalyzeResult{}, fmt.Errorf("invalid date: %w", err)
 	}
+	if date != today {
+		return AnalyzeResult{}, fmt.Errorf("only today's messages can be analyzed into QA")
+	}
+	from := day
+	if cfg.QAStartAt.After(from) {
+		from = *cfg.QAStartAt
+	}
+	to := day.AddDate(0, 0, 1)
 	var pending []db.WeComMessage
-	if err := s.db.WithContext(ctx).Where("message_at >= ? AND message_at < ? AND analyzed_at IS NULL", day, day.AddDate(0, 0, 1)).Order("message_at asc").Find(&pending).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("message_at >= ? AND message_at < ? AND analyzed_at IS NULL", from, to).Order("message_at asc").Find(&pending).Error; err != nil {
 		return AnalyzeResult{}, err
 	}
 	run := db.WeComAnalysisRun{ID: uuid.NewString(), AnalysisDate: date, Status: "running", StartedAt: time.Now()}
@@ -442,6 +464,7 @@ func (s *Service) AnalyzeDate(ctx context.Context, date string) (AnalyzeResult, 
 	result := AnalyzeResult{RunID: run.ID, MessageCount: len(pending)}
 	if len(pending) == 0 {
 		s.finishRun(ctx, &run, result, nil)
+		s.markAnalyzeSuccess(ctx, date)
 		return result, nil
 	}
 	conversationKeys := map[string]struct{}{}
@@ -449,7 +472,7 @@ func (s *Service) AnalyzeDate(ctx context.Context, date string) (AnalyzeResult, 
 		conversationKeys[conversationKey(msg, cfg.ArchiveUserID)] = struct{}{}
 	}
 	var allMessages []db.WeComMessage
-	if err := s.db.WithContext(ctx).Where("message_at >= ? AND message_at < ?", day, day.AddDate(0, 0, 1)).Order("message_at asc").Find(&allMessages).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("message_at >= ? AND message_at < ?", from, to).Order("message_at asc").Find(&allMessages).Error; err != nil {
 		s.finishRun(ctx, &run, result, err)
 		return result, err
 	}
@@ -518,9 +541,14 @@ func (s *Service) AnalyzeDate(ctx context.Context, date string) (AnalyzeResult, 
 		s.finishRun(ctx, &run, result, err)
 		return result, err
 	}
-	_ = s.db.WithContext(ctx).Model(&db.WeComArchiveConfig{}).Where("id = ?", singletonConfigID).Updates(map[string]any{"last_analyze_at": now, "last_error": "", "updated_at": now}).Error
+	s.markAnalyzeSuccess(ctx, date)
 	s.finishRun(ctx, &run, result, nil)
 	return result, nil
+}
+
+func (s *Service) markAnalyzeSuccess(ctx context.Context, date string) {
+	now := time.Now()
+	_ = s.db.WithContext(ctx).Model(&db.WeComArchiveConfig{}).Where("id = ?", singletonConfigID).Updates(map[string]any{"last_analyze_at": now, "last_analyze_date": date, "last_error": "", "updated_at": now}).Error
 }
 
 func (s *Service) finishRun(ctx context.Context, run *db.WeComAnalysisRun, result AnalyzeResult, runErr error) {
@@ -554,8 +582,25 @@ func (s *Service) Start(ctx context.Context) {
 					}
 				}
 				cfg, _ = s.config(ctx)
-				if cfg != nil && (cfg.LastAnalyzeAt == nil || now.Sub(*cfg.LastAnalyzeAt) >= time.Duration(cfg.AnalyzeIntervalSeconds)*time.Second) {
-					if _, err := s.AnalyzeDate(ctx, ""); err != nil {
+				if cfg == nil || cfg.QAStartAt == nil {
+					continue
+				}
+				loc, _ := time.LoadLocation("Asia/Shanghai")
+				localNow := now.In(loc)
+				analyzeTime := cfg.AnalyzeTime
+				if analyzeTime == "" {
+					analyzeTime = "23:50"
+				}
+				scheduled, parseErr := time.Parse("15:04", analyzeTime)
+				if parseErr != nil {
+					s.setError(ctx, fmt.Errorf("invalid analyze_time: %w", parseErr))
+					continue
+				}
+				today := localNow.Format("2006-01-02")
+				due := localNow.Hour() > scheduled.Hour() || (localNow.Hour() == scheduled.Hour() && localNow.Minute() >= scheduled.Minute())
+				retryReady := cfg.LastAnalyzeAt == nil || now.Sub(*cfg.LastAnalyzeAt) >= 5*time.Minute
+				if due && cfg.LastAnalyzeDate != today && retryReady {
+					if _, err := s.AnalyzeDate(ctx, today); err != nil {
 						log.Printf("[wecom] analyze: %v", err)
 					}
 				}
@@ -590,6 +635,100 @@ func (s *Service) ListMessages(ctx context.Context, roomID, date string, page, s
 	var rows []db.WeComMessage
 	err := query.Order("message_at desc").Offset((page - 1) * size).Limit(size).Find(&rows).Error
 	return total, rows, err
+}
+
+type ConversationSummary struct {
+	ID            string    `json:"id"`
+	Type          string    `json:"type"`
+	RoomID        string    `json:"room_id,omitempty"`
+	PeerUserID    string    `json:"peer_user_id,omitempty"`
+	MessageCount  int       `json:"message_count"`
+	LastContent   string    `json:"last_content"`
+	LastMessageAt time.Time `json:"last_message_at"`
+}
+
+func wecomDay(date string) (time.Time, time.Time, string, error) {
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	if strings.TrimSpace(date) == "" {
+		date = time.Now().In(loc).Format("2006-01-02")
+	}
+	day, err := time.ParseInLocation("2006-01-02", date, loc)
+	if err != nil {
+		return time.Time{}, time.Time{}, "", fmt.Errorf("invalid date: %w", err)
+	}
+	return day, day.AddDate(0, 0, 1), date, nil
+}
+
+func (s *Service) messagesForDay(ctx context.Context, date string) ([]db.WeComMessage, error) {
+	from, to, _, err := wecomDay(date)
+	if err != nil {
+		return nil, err
+	}
+	var rows []db.WeComMessage
+	err = s.db.WithContext(ctx).Where("message_at >= ? AND message_at < ?", from, to).Order("message_at asc, seq asc").Find(&rows).Error
+	return rows, err
+}
+
+// ListConversations returns every stored conversation for one selected day.
+// History remains visible here even when it predates QAStartAt.
+func (s *Service) ListConversations(ctx context.Context, date string) ([]ConversationSummary, error) {
+	cfg, err := s.config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.messagesForDay(ctx, date)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]*ConversationSummary)
+	for _, row := range rows {
+		id := conversationKey(row, cfg.ArchiveUserID)
+		summary := byID[id]
+		if summary == nil {
+			summary = &ConversationSummary{ID: id}
+			if row.RoomID != "" {
+				summary.Type = "group"
+				summary.RoomID = row.RoomID
+			} else {
+				summary.Type = "direct"
+				summary.PeerUserID = strings.TrimPrefix(id, "direct:")
+			}
+			byID[id] = summary
+		}
+		summary.MessageCount++
+		summary.LastContent = row.Content
+		summary.LastMessageAt = row.MessageAt
+	}
+	result := make([]ConversationSummary, 0, len(byID))
+	for _, summary := range byID {
+		result = append(result, *summary)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].LastMessageAt.After(result[j].LastMessageAt) })
+	return result, nil
+}
+
+// ListConversationMessages returns the complete stored text stream for a
+// conversation on one selected day, ordered exactly as it happened.
+func (s *Service) ListConversationMessages(ctx context.Context, conversationID, date string) ([]db.WeComMessage, error) {
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return nil, fmt.Errorf("conversation id is required")
+	}
+	cfg, err := s.config(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.messagesForDay(ctx, date)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]db.WeComMessage, 0)
+	for _, row := range rows {
+		if conversationKey(row, cfg.ArchiveUserID) == conversationID {
+			result = append(result, row)
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) ListRuns(ctx context.Context, limit int) ([]db.WeComAnalysisRun, error) {

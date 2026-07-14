@@ -291,22 +291,24 @@ func (Message) TableName() string { return "messages" }
 // WeComArchiveConfig is the singleton configuration for the one supported
 // enterprise. Secret and private key are never returned by management APIs.
 type WeComArchiveConfig struct {
-	ID                     string      `gorm:"primaryKey;size:36" json:"id"`
-	CorpID                 string      `gorm:"size:128;not null" json:"corp_id"`
-	Secret                 string      `gorm:"type:text" json:"-"`
-	PrivateKey             string      `gorm:"type:text" json:"-"`
-	PublicKeyVersion       int         `gorm:"not null;default:1" json:"public_key_version"`
-	ArchiveUserID          string      `gorm:"size:128;index" json:"archive_user_id"`
-	GroupIDs               StringSlice `gorm:"type:text" json:"group_ids"`
-	Enabled                bool        `gorm:"not null;default:false;index" json:"enabled"`
-	PollIntervalSeconds    int         `gorm:"not null;default:10" json:"poll_interval_seconds"`
-	AnalyzeIntervalSeconds int         `gorm:"not null;default:600" json:"analyze_interval_seconds"`
-	LastSeq                uint64      `gorm:"not null;default:0" json:"last_seq"`
-	LastSyncAt             *time.Time  `json:"last_sync_at,omitempty"`
-	LastAnalyzeAt          *time.Time  `json:"last_analyze_at,omitempty"`
-	LastError              string      `gorm:"type:text" json:"last_error,omitempty"`
-	CreatedAt              time.Time   `json:"created_at"`
-	UpdatedAt              time.Time   `json:"updated_at"`
+	ID                  string      `gorm:"primaryKey;size:36" json:"id"`
+	CorpID              string      `gorm:"size:128;not null" json:"corp_id"`
+	Secret              string      `gorm:"type:text" json:"-"`
+	PrivateKey          string      `gorm:"type:text" json:"-"`
+	PublicKeyVersion    int         `gorm:"not null;default:1" json:"public_key_version"`
+	ArchiveUserID       string      `gorm:"size:128;index" json:"archive_user_id"`
+	GroupIDs            StringSlice `gorm:"type:text" json:"group_ids"`
+	Enabled             bool        `gorm:"not null;default:false;index" json:"enabled"`
+	PollIntervalSeconds int         `gorm:"not null;default:10" json:"poll_interval_seconds"`
+	AnalyzeTime         string      `gorm:"size:5;not null;default:23:50" json:"analyze_time"`
+	QAStartAt           *time.Time  `gorm:"index" json:"qa_start_at,omitempty"`
+	LastSeq             uint64      `gorm:"not null;default:0" json:"last_seq"`
+	LastSyncAt          *time.Time  `json:"last_sync_at,omitempty"`
+	LastAnalyzeAt       *time.Time  `json:"last_analyze_at,omitempty"`
+	LastAnalyzeDate     string      `gorm:"size:10;index" json:"last_analyze_date,omitempty"`
+	LastError           string      `gorm:"type:text" json:"last_error,omitempty"`
+	CreatedAt           time.Time   `json:"created_at"`
+	UpdatedAt           time.Time   `json:"updated_at"`
 }
 
 func (WeComArchiveConfig) TableName() string { return "wecom_archive_configs" }
