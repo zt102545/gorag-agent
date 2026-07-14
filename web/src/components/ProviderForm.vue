@@ -53,13 +53,6 @@
         <el-form-item v-if="kind === 'embedding'" label="Dimensions">
           <el-input-number v-model="form.dimensions" :min="1" :step="64" />
         </el-form-item>
-        <el-form-item v-if="kind === 'embedding'" label="向量搜索">
-          <el-switch
-            v-model="form.use_vector_for_search"
-            active-text="BM25 + 向量"
-            inactive-text="仅 BM25"
-          />
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>
@@ -88,7 +81,6 @@ const form = reactive({
   model_name: '',
   api_key: '',
   dimensions: 1536,
-  use_vector_for_search: false,
 })
 
 const maskHint = computed(() => (masked.value ? `当前: ${masked.value}（留空不修改）` : '未配置'))
@@ -134,7 +126,6 @@ function resetForm() {
     model_name: '',
     api_key: '',
     dimensions: 1536,
-    use_vector_for_search: false,
   })
   masked.value = ''
 }
@@ -154,7 +145,6 @@ function openEdit(row: api.ProviderProfile) {
     model_name: row.model_name || '',
     api_key: '',
     dimensions: row.dimensions ?? 1536,
-    use_vector_for_search: row.use_vector_for_search ?? false,
   })
   masked.value = row.api_key_masked || ''
   dialog.value = true

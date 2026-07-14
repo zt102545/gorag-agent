@@ -90,31 +90,6 @@ func (s *RedisSearchStore) Delete(ctx context.Context, id string) error {
 	return s.client.Del(ctx, s.key(id)).Err()
 }
 
-func (s *RedisSearchStore) SearchText(ctx context.Context, queryText string, topK int) ([]Record, error) {
-	if topK <= 0 {
-		topK = 1
-	}
-	query := buildTextQuery(queryText)
-	if query == "" {
-		return nil, nil
-	}
-	res, err := s.client.FTSearchWithArgs(ctx, s.indexName, query, &redis.FTSearchOptions{
-		Return: []redis.FTSearchReturn{
-			{FieldName: "question"},
-			{FieldName: "answer"},
-			{FieldName: "category"},
-			{FieldName: "tags"},
-		},
-		WithScores: true,
-		Scorer:     "BM25",
-		Limit:      topK,
-	}).Result()
-	if err != nil {
-		return nil, fmt.Errorf("redissearch bm25: %w", err)
-	}
-	return recordsFromRedisDocs(res.Docs, s.keyPrefix), nil
-}
-
 func (s *RedisSearchStore) Search(ctx context.Context, queryVector []float32, topK int) ([]Record, error) {
 	if topK <= 0 {
 		topK = 3
@@ -168,28 +143,6 @@ func recordsFromRedisDocs(docs []redis.Document, keyPrefix string) []Record {
 		out = append(out, rec)
 	}
 	return out
-}
-
-func buildTextQuery(queryText string) string {
-	terms := strings.Fields(strings.TrimSpace(queryText))
-	if len(terms) == 0 {
-		return ""
-	}
-	for i, term := range terms {
-		terms[i] = escapeRedisSearchTerm(term)
-	}
-	return strings.Join(terms, " ")
-}
-
-func escapeRedisSearchTerm(term string) string {
-	var builder strings.Builder
-	for _, r := range term {
-		if strings.ContainsRune(`,.<>{}[]"':;!@#$%^&*()-+=~|/\?`, r) {
-			builder.WriteRune('\\')
-		}
-		builder.WriteRune(r)
-	}
-	return builder.String()
 }
 
 func floatsToBytes(v []float32) []byte {

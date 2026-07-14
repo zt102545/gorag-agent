@@ -57,12 +57,11 @@ type ChatModelConfig struct {
 }
 
 type EmbeddingConfig struct {
-	Provider           string `mapstructure:"provider"`
-	BaseURL            string `mapstructure:"base_url"`
-	ModelName          string `mapstructure:"model_name"`
-	APIKey             string `mapstructure:"api_key"`
-	Dimensions         int    `mapstructure:"dimensions"`
-	UseVectorForSearch bool   `mapstructure:"use_vector_for_search"`
+	Provider   string `mapstructure:"provider"`
+	BaseURL    string `mapstructure:"base_url"`
+	ModelName  string `mapstructure:"model_name"`
+	APIKey     string `mapstructure:"api_key"`
+	Dimensions int    `mapstructure:"dimensions"`
 }
 
 type RedisConfig struct {
@@ -169,7 +168,6 @@ func Load(env string) (*Config, error) {
 	_ = v.BindEnv("embedding.base_url", "EMBEDDING_BASE_URL")
 	_ = v.BindEnv("embedding.model_name", "EMBEDDING_MODEL_NAME")
 	_ = v.BindEnv("embedding.dimensions", "EMBEDDING_DIMENSIONS")
-	_ = v.BindEnv("embedding.use_vector_for_search", "EMBEDDING_USE_VECTOR_FOR_SEARCH")
 	_ = v.BindEnv("database.driver", "DATABASE_DRIVER")
 	_ = v.BindEnv("database.mysql.dsn", "DATABASE_MYSQL_DSN")
 	_ = v.BindEnv("database.sqlite.path", "DATABASE_SQLITE_PATH")

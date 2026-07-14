@@ -18,7 +18,6 @@ type Store interface {
 	Ensure(ctx context.Context, dim int) error
 	Upsert(ctx context.Context, rec Record) error
 	Delete(ctx context.Context, id string) error
-	SearchText(ctx context.Context, query string, topK int) ([]Record, error)
 	Search(ctx context.Context, queryVector []float32, topK int) ([]Record, error)
 	Close() error
 }

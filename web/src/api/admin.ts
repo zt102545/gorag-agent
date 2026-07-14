@@ -19,7 +19,6 @@ export interface ProviderProfile {
   temperature?: number;
   max_tokens?: number;
   dimensions?: number;
-  use_vector_for_search?: boolean;
   updated_at?: string;
 }
 

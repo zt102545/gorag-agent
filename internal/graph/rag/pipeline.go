@@ -15,7 +15,6 @@ type Service struct {
 	store               vectorstore.Store
 	embedder            embedding.Embedder
 	topK                int
-	useVectorForSearch  bool
 	filterKnowledgeBase func(context.Context, string, []string) (map[string]struct{}, error)
 	loadCreatedAt       func(context.Context, string, []string) (map[string]time.Time, error)
 }
@@ -45,10 +44,6 @@ func NewService(store vectorstore.Store, embedder embedding.Embedder, topK int) 
 	return &Service{store: store, embedder: embedder, topK: topK}
 }
 
-func (s *Service) SetUseVectorForSearch(enabled bool) {
-	s.useVectorForSearch = enabled
-}
-
 func (s *Service) Search(ctx context.Context, query string) (string, error) {
 	hits, err := s.SearchHits(ctx, query)
 	if err != nil {
@@ -65,14 +60,6 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 	if candidateLimit < 100 {
 		candidateLimit = 100
 	}
-	records, err := s.store.SearchText(ctx, query, candidateLimit)
-	if err != nil && !s.useVectorForSearch {
-		return nil, fmt.Errorf("retrieve text documents: %w", err)
-	}
-	if !s.useVectorForSearch {
-		return s.filterRecords(ctx, records)
-	}
-
 	vecs, err := s.embedder.EmbedStrings(ctx, []string{query})
 	if err != nil {
 		return nil, fmt.Errorf("embed query: %w", err)
@@ -85,14 +72,10 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 		qv[i] = float32(v)
 	}
 
-	vectorRecords, vectorErr := s.store.Search(ctx, qv, candidateLimit)
-	if vectorErr != nil {
-		if err != nil {
-			return nil, fmt.Errorf("retrieve text documents: %v; retrieve vector documents: %w", err, vectorErr)
-		}
-		return nil, fmt.Errorf("retrieve documents: %w", vectorErr)
+	records, err := s.store.Search(ctx, qv, candidateLimit)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve vector documents: %w", err)
 	}
-	records = mergeRecords(records, vectorRecords, candidateLimit)
 	return s.filterRecords(ctx, records)
 }
 
@@ -141,41 +124,6 @@ func idsFromHits(hits []SearchHit) []string {
 		ids = append(ids, hit.ID)
 	}
 	return ids
-}
-
-func (s *Service) textTopK() int {
-	if s.useVectorForSearch {
-		return s.topK
-	}
-	return 1
-}
-
-func mergeRecords(primary, secondary []vectorstore.Record, limit int) []vectorstore.Record {
-	if limit <= 0 {
-		limit = 3
-	}
-	out := make([]vectorstore.Record, 0, limit)
-	seen := make(map[string]struct{}, limit)
-	appendUnique := func(records []vectorstore.Record) {
-		for _, rec := range records {
-			if rec.ID == "" {
-				continue
-			}
-			if _, ok := seen[rec.ID]; ok {
-				continue
-			}
-			seen[rec.ID] = struct{}{}
-			out = append(out, rec)
-			if len(out) >= limit {
-				return
-			}
-		}
-	}
-	appendUnique(primary)
-	if len(out) < limit {
-		appendUnique(secondary)
-	}
-	return out
 }
 
 func searchHitsFromRecords(records []vectorstore.Record) []SearchHit {

@@ -168,7 +168,6 @@ func (s *SettingsService) seedProvider(ctx context.Context, kind string, src any
 		row.ModelName = v.ModelName
 		row.APIKey = v.APIKey
 		row.Dimensions = v.Dimensions
-		row.UseVectorForSearch = v.UseVectorForSearch
 	}
 	if row.Provider != "" && row.ModelName != "" {
 		return s.db.WithContext(ctx).Create(row).Error
@@ -228,20 +227,19 @@ func (s *SettingsService) seedProvider(ctx context.Context, kind string, src any
 }
 
 type ProviderView struct {
-	ID                 string    `json:"id,omitempty"`
-	Kind               string    `json:"kind"`
-	Name               string    `json:"name,omitempty"`
-	Active             bool      `json:"active"`
-	Provider           string    `json:"provider"`
-	BaseURL            string    `json:"base_url"`
-	ModelName          string    `json:"model_name"`
-	APIKeyMasked       string    `json:"api_key_masked"`
-	HasAPIKey          bool      `json:"has_api_key"`
-	Temperature        float32   `json:"temperature,omitempty"`
-	MaxTokens          int       `json:"max_tokens,omitempty"`
-	Dimensions         int       `json:"dimensions,omitempty"`
-	UseVectorForSearch bool      `json:"use_vector_for_search"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	ID           string    `json:"id,omitempty"`
+	Kind         string    `json:"kind"`
+	Name         string    `json:"name,omitempty"`
+	Active       bool      `json:"active"`
+	Provider     string    `json:"provider"`
+	BaseURL      string    `json:"base_url"`
+	ModelName    string    `json:"model_name"`
+	APIKeyMasked string    `json:"api_key_masked"`
+	HasAPIKey    bool      `json:"has_api_key"`
+	Temperature  float32   `json:"temperature,omitempty"`
+	MaxTokens    int       `json:"max_tokens,omitempty"`
+	Dimensions   int       `json:"dimensions,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 func maskKey(key string) string {
@@ -260,33 +258,31 @@ func (s *SettingsService) GetProvider(ctx context.Context, kind string) (*Provid
 		return nil, err
 	}
 	return &ProviderView{
-		ID:                 row.ID,
-		Kind:               row.Kind,
-		Name:               row.Name,
-		Active:             row.Active,
-		Provider:           row.Provider,
-		BaseURL:            row.BaseURL,
-		ModelName:          row.ModelName,
-		APIKeyMasked:       maskKey(row.APIKey),
-		HasAPIKey:          row.APIKey != "",
-		Temperature:        row.Temperature,
-		MaxTokens:          row.MaxTokens,
-		Dimensions:         row.Dimensions,
-		UseVectorForSearch: row.UseVectorForSearch,
-		UpdatedAt:          row.UpdatedAt,
+		ID:           row.ID,
+		Kind:         row.Kind,
+		Name:         row.Name,
+		Active:       row.Active,
+		Provider:     row.Provider,
+		BaseURL:      row.BaseURL,
+		ModelName:    row.ModelName,
+		APIKeyMasked: maskKey(row.APIKey),
+		HasAPIKey:    row.APIKey != "",
+		Temperature:  row.Temperature,
+		MaxTokens:    row.MaxTokens,
+		Dimensions:   row.Dimensions,
+		UpdatedAt:    row.UpdatedAt,
 	}, nil
 }
 
 type UpdateProviderRequest struct {
-	Name               *string  `json:"name"`
-	Provider           *string  `json:"provider"`
-	BaseURL            *string  `json:"base_url"`
-	ModelName          *string  `json:"model_name"`
-	APIKey             *string  `json:"api_key"`
-	Temperature        *float32 `json:"temperature"`
-	MaxTokens          *int     `json:"max_tokens"`
-	Dimensions         *int     `json:"dimensions"`
-	UseVectorForSearch *bool    `json:"use_vector_for_search"`
+	Name        *string  `json:"name"`
+	Provider    *string  `json:"provider"`
+	BaseURL     *string  `json:"base_url"`
+	ModelName   *string  `json:"model_name"`
+	APIKey      *string  `json:"api_key"`
+	Temperature *float32 `json:"temperature"`
+	MaxTokens   *int     `json:"max_tokens"`
+	Dimensions  *int     `json:"dimensions"`
 }
 
 type AgentConfigView struct {
@@ -319,20 +315,19 @@ func (s *SettingsService) ListProviderProfiles(ctx context.Context, kind string)
 	out := make([]ProviderView, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, ProviderView{
-			ID:                 row.ID,
-			Kind:               row.Kind,
-			Name:               row.Name,
-			Active:             row.Active,
-			Provider:           row.Provider,
-			BaseURL:            row.BaseURL,
-			ModelName:          row.ModelName,
-			APIKeyMasked:       maskKey(row.APIKey),
-			HasAPIKey:          row.APIKey != "",
-			Temperature:        row.Temperature,
-			MaxTokens:          row.MaxTokens,
-			Dimensions:         row.Dimensions,
-			UseVectorForSearch: row.UseVectorForSearch,
-			UpdatedAt:          row.UpdatedAt,
+			ID:           row.ID,
+			Kind:         row.Kind,
+			Name:         row.Name,
+			Active:       row.Active,
+			Provider:     row.Provider,
+			BaseURL:      row.BaseURL,
+			ModelName:    row.ModelName,
+			APIKeyMasked: maskKey(row.APIKey),
+			HasAPIKey:    row.APIKey != "",
+			Temperature:  row.Temperature,
+			MaxTokens:    row.MaxTokens,
+			Dimensions:   row.Dimensions,
+			UpdatedAt:    row.UpdatedAt,
 		})
 	}
 	return out, nil
@@ -399,20 +394,19 @@ func (s *SettingsService) getProviderProfile(ctx context.Context, id string) (*P
 		return nil, err
 	}
 	return &ProviderView{
-		ID:                 row.ID,
-		Kind:               row.Kind,
-		Name:               row.Name,
-		Active:             row.Active,
-		Provider:           row.Provider,
-		BaseURL:            row.BaseURL,
-		ModelName:          row.ModelName,
-		APIKeyMasked:       maskKey(row.APIKey),
-		HasAPIKey:          row.APIKey != "",
-		Temperature:        row.Temperature,
-		MaxTokens:          row.MaxTokens,
-		Dimensions:         row.Dimensions,
-		UseVectorForSearch: row.UseVectorForSearch,
-		UpdatedAt:          row.UpdatedAt,
+		ID:           row.ID,
+		Kind:         row.Kind,
+		Name:         row.Name,
+		Active:       row.Active,
+		Provider:     row.Provider,
+		BaseURL:      row.BaseURL,
+		ModelName:    row.ModelName,
+		APIKeyMasked: maskKey(row.APIKey),
+		HasAPIKey:    row.APIKey != "",
+		Temperature:  row.Temperature,
+		MaxTokens:    row.MaxTokens,
+		Dimensions:   row.Dimensions,
+		UpdatedAt:    row.UpdatedAt,
 	}, nil
 }
 
@@ -503,7 +497,6 @@ func (s *SettingsService) ResolveEmbeddingConfig(ctx context.Context) config.Emb
 	if row.Dimensions > 0 {
 		cfg.Dimensions = row.Dimensions
 	}
-	cfg.UseVectorForSearch = row.UseVectorForSearch
 	return cfg
 }
 
@@ -640,9 +633,6 @@ func applyProviderProfileRequest(row *db.AIProviderProfile, kind string, req Upd
 	if kind == ProviderKindEmbedding {
 		if req.Dimensions != nil {
 			row.Dimensions = *req.Dimensions
-		}
-		if req.UseVectorForSearch != nil {
-			row.UseVectorForSearch = *req.UseVectorForSearch
 		}
 	}
 	if row.Name == "" {

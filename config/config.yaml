@@ -33,7 +33,6 @@ embedding:
   base_url: ""
   model_name: ""
   dimensions: 0
-  use_vector_for_search: false
 
 # =============================================================================
 # Redis 基础设施
