@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/yourorg/agent_customer_service/internal/appscope"
 	"github.com/yourorg/agent_customer_service/internal/vectorstore"
 )
 
@@ -99,14 +100,15 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Item, error) 
 		status = ClassifyPending
 	}
 	item := &Item{
-		ID:             uuid.NewString(),
-		Question:       req.Question,
-		Answer:         req.Answer,
-		Category:       req.Category,
-		Tags:           req.Tags,
-		ClassifyStatus: status,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		ID:              uuid.NewString(),
+		KnowledgeBaseID: firstNonEmpty(req.KnowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID),
+		Question:        req.Question,
+		Answer:          req.Answer,
+		Category:        req.Category,
+		Tags:            req.Tags,
+		ClassifyStatus:  status,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if err := s.meta.Save(ctx, item); err != nil {
 		return nil, fmt.Errorf("save meta: %w", err)
@@ -142,16 +144,17 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (*It
 	}
 
 	item := &Item{
-		ID:             id,
-		Question:       req.Question,
-		Answer:         req.Answer,
-		Category:       req.Category,
-		Tags:           req.Tags,
-		ClassifyStatus: status,
-		ClassifyError:  "",
-		ClassifiedAt:   existing.ClassifiedAt,
-		CreatedAt:      existing.CreatedAt,
-		UpdatedAt:      time.Now(),
+		ID:              id,
+		KnowledgeBaseID: existing.KnowledgeBaseID,
+		Question:        req.Question,
+		Answer:          req.Answer,
+		Category:        req.Category,
+		Tags:            req.Tags,
+		ClassifyStatus:  status,
+		ClassifyError:   "",
+		ClassifiedAt:    existing.ClassifiedAt,
+		CreatedAt:       existing.CreatedAt,
+		UpdatedAt:       time.Now(),
 	}
 	if err := s.meta.Save(ctx, item); err != nil {
 		return nil, fmt.Errorf("save meta: %w", err)
@@ -174,24 +177,34 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 func (s *Service) List(ctx context.Context, query ListQuery) (*ListResult, error) {
+	query.KnowledgeBaseID = firstNonEmpty(query.KnowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID)
 	return s.meta.List(ctx, query)
 }
 
-func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
-	return s.meta.ListCategories(ctx)
+func (s *Service) ListCategories(ctx context.Context, knowledgeBaseID string) ([]string, error) {
+	return s.meta.ListCategories(ctx, firstNonEmpty(knowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID))
 }
 
-func (s *Service) ListTags(ctx context.Context) ([]string, error) {
-	return s.meta.ListTags(ctx)
+func (s *Service) ListTags(ctx context.Context, knowledgeBaseID string) ([]string, error) {
+	return s.meta.ListTags(ctx, firstNonEmpty(knowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID))
+}
+
+func (s *Service) FilterKnowledgeBaseIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]struct{}, error) {
+	return s.meta.FilterIDs(ctx, firstNonEmpty(knowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID), ids)
 }
 
 func (s *Service) ImportCSV(ctx context.Context, r io.Reader) (*ImportResult, error) {
+	return s.ImportCSVTo(ctx, r, "")
+}
+
+func (s *Service) ImportCSVTo(ctx context.Context, r io.Reader, knowledgeBaseID string) (*ImportResult, error) {
 	requests, err := ParseCSV(r)
 	if err != nil {
 		return nil, err
 	}
 	result := &ImportResult{}
 	for i, req := range requests {
+		req.KnowledgeBaseID = firstNonEmpty(knowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID)
 		if _, err := s.Create(ctx, req); err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: %v", i+2, err))
@@ -266,4 +279,13 @@ func (s *Service) Redis() *redis.Client {
 
 func (s *Service) Meta() MetaStore {
 	return s.meta
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

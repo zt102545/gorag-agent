@@ -14,23 +14,25 @@ const (
 )
 
 type Item struct {
-	ID             string     `json:"id"`
-	Question       string     `json:"question"`
-	Answer         string     `json:"answer"`
-	Category       string     `json:"category,omitempty"`
-	Tags           []string   `json:"tags,omitempty"`
-	ClassifyStatus string     `json:"classify_status"`
-	ClassifyError  string     `json:"classify_error,omitempty"`
-	ClassifiedAt   *time.Time `json:"classified_at,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID              string     `json:"id"`
+	KnowledgeBaseID string     `json:"knowledge_base_id"`
+	Question        string     `json:"question"`
+	Answer          string     `json:"answer"`
+	Category        string     `json:"category,omitempty"`
+	Tags            []string   `json:"tags,omitempty"`
+	ClassifyStatus  string     `json:"classify_status"`
+	ClassifyError   string     `json:"classify_error,omitempty"`
+	ClassifiedAt    *time.Time `json:"classified_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type CreateRequest struct {
-	Question string   `json:"question" binding:"required"`
-	Answer   string   `json:"answer" binding:"required"`
-	Category string   `json:"category"`
-	Tags     []string `json:"tags"`
+	KnowledgeBaseID string   `json:"knowledge_base_id"`
+	Question        string   `json:"question" binding:"required"`
+	Answer          string   `json:"answer" binding:"required"`
+	Category        string   `json:"category"`
+	Tags            []string `json:"tags"`
 }
 
 type UpdateRequest struct {
@@ -41,12 +43,13 @@ type UpdateRequest struct {
 }
 
 type ListQuery struct {
-	Category       string
-	ClassifyStatus string
-	Tag            string
-	Q              string
-	Page           int
-	Size           int
+	KnowledgeBaseID string
+	Category        string
+	ClassifyStatus  string
+	Tag             string
+	Q               string
+	Page            int
+	Size            int
 }
 
 type ListResult struct {

@@ -10,6 +10,7 @@ type MetaStore interface {
 	AddToCategory(ctx context.Context, category, id string) error
 	RemoveFromCategory(ctx context.Context, category, id string) error
 	ListByCategory(ctx context.Context, category string, page, size int) (*ListResult, error)
-	ListCategories(ctx context.Context) ([]string, error)
-	ListTags(ctx context.Context) ([]string, error)
+	ListCategories(ctx context.Context, knowledgeBaseID string) ([]string, error)
+	ListTags(ctx context.Context, knowledgeBaseID string) ([]string, error)
+	FilterIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]struct{}, error)
 }

@@ -2,12 +2,17 @@ package knowledgeapp
 
 import (
 	"context"
+	"io"
 
 	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
 )
 
 type Service struct {
 	qa *qa.Service
+}
+
+func (s *Service) ImportCSVTo(ctx context.Context, r io.Reader, knowledgeBaseID string) (*qa.ImportResult, error) {
+	return s.qa.ImportCSVTo(ctx, r, knowledgeBaseID)
 }
 
 func NewService(qaService *qa.Service) *Service {
@@ -34,12 +39,12 @@ func (s *Service) List(ctx context.Context, query qa.ListQuery) (*qa.ListResult,
 	return s.qa.List(ctx, query)
 }
 
-func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
-	return s.qa.ListCategories(ctx)
+func (s *Service) ListCategories(ctx context.Context, knowledgeBaseID string) ([]string, error) {
+	return s.qa.ListCategories(ctx, knowledgeBaseID)
 }
 
-func (s *Service) ListTags(ctx context.Context) ([]string, error) {
-	return s.qa.ListTags(ctx)
+func (s *Service) ListTags(ctx context.Context, knowledgeBaseID string) ([]string, error) {
+	return s.qa.ListTags(ctx, knowledgeBaseID)
 }
 
 func (s *Service) EnsureIndex(ctx context.Context) error {

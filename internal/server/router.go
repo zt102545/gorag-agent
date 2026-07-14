@@ -22,6 +22,7 @@ type Deps struct {
 	AdminSessionHandler *handler.AdminSessionHandler
 	AIErrorHandler      *handler.AIErrorHandler
 	UnansweredHandler   *handler.UnansweredHandler
+	ScopeHandler        *handler.ScopeHandler
 	WeComHandler        *handler.WeComHandler
 	PublicLimiter       *middleware.PublicIPLimiter
 }
@@ -189,6 +190,18 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.GET("/sessions/:id", deps.AdminSessionHandler.GMGet)
 		gm.GET("/prompts", deps.SettingsHandler.GMListPrompts)
 		gm.PUT("/prompts/:key", deps.SettingsHandler.GMUpdatePrompt)
+		gm.GET("/prompt-groups", deps.ScopeHandler.ListPromptGroups)
+		gm.POST("/prompt-groups", deps.ScopeHandler.CreatePromptGroup)
+		gm.PUT("/prompt-groups/:id", deps.ScopeHandler.UpdatePromptGroup)
+		gm.POST("/prompt-groups/:id/copy", deps.ScopeHandler.CopyPromptGroup)
+		gm.DELETE("/prompt-groups/:id", deps.ScopeHandler.DeletePromptGroup)
+		gm.GET("/prompt-groups/:id/prompts", deps.ScopeHandler.ListGroupPrompts)
+		gm.PUT("/prompt-groups/:id/prompts/:key", deps.ScopeHandler.UpdateGroupPrompt)
+		gm.GET("/knowledge-bases", deps.ScopeHandler.ListKnowledgeBases)
+		gm.POST("/knowledge-bases", deps.ScopeHandler.CreateKnowledgeBase)
+		gm.PUT("/knowledge-bases/:id", deps.ScopeHandler.UpdateKnowledgeBase)
+		gm.POST("/knowledge-bases/:id/copy", deps.ScopeHandler.CopyKnowledgeBase)
+		gm.DELETE("/knowledge-bases/:id", deps.ScopeHandler.DeleteKnowledgeBase)
 		gm.GET("/providers/:kind", deps.SettingsHandler.ListProviderProfiles)
 		gm.POST("/providers/:kind", deps.SettingsHandler.CreateProviderProfile)
 		gm.PUT("/providers/:kind/:id", deps.SettingsHandler.UpdateProviderProfile)

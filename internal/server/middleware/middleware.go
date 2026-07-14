@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
+	"github.com/yourorg/agent_customer_service/internal/appscope"
 	"github.com/yourorg/agent_customer_service/internal/auth"
 	"github.com/yourorg/agent_customer_service/pkg/response"
 )
@@ -33,6 +34,8 @@ type BizContext struct {
 	AuthType        string `json:"auth_type,omitempty"`
 	IPRatePerMinute int    `json:"ip_rate_per_minute,omitempty"`
 	IPDailyQuota    int    `json:"ip_daily_quota,omitempty"`
+	PromptGroupID   string `json:"prompt_group_id,omitempty"`
+	KnowledgeBaseID string `json:"knowledge_base_id,omitempty"`
 }
 
 var (
@@ -146,6 +149,8 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 			bizCtx.CallerName = identity.Name
 			bizCtx.IPRatePerMinute = identity.IPRatePerMinute
 			bizCtx.IPDailyQuota = identity.IPDailyQuota
+			bizCtx.PromptGroupID = identity.PromptGroupID
+			bizCtx.KnowledgeBaseID = identity.KnowledgeBaseID
 			if identity.AuthType == "user_token" || identity.AuthType == "public_user_token" {
 				bizCtx.CallerUserID = identity.CallerUserID
 				bizCtx.ChannelID = identity.ChannelID
@@ -160,6 +165,7 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 				bizCtx.TenantID = identity.TenantID
 			}
 			c.Set(BizContextKey, &bizCtx)
+			c.Request = c.Request.WithContext(appscope.WithContext(c.Request.Context(), appscope.Scope{PromptGroupID: bizCtx.PromptGroupID, KnowledgeBaseID: bizCtx.KnowledgeBaseID}))
 			c.Next()
 			return
 		}
@@ -178,6 +184,8 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 			bizCtx.CallerName = identity.Name
 			bizCtx.IPRatePerMinute = identity.IPRatePerMinute
 			bizCtx.IPDailyQuota = identity.IPDailyQuota
+			bizCtx.PromptGroupID = identity.PromptGroupID
+			bizCtx.KnowledgeBaseID = identity.KnowledgeBaseID
 			if identity.AuthType == "user_token" || identity.AuthType == "public_user_token" {
 				bizCtx.CallerUserID = identity.CallerUserID
 				bizCtx.ChannelID = identity.ChannelID
@@ -192,6 +200,7 @@ func BizAuth(authSvc *auth.Service) gin.HandlerFunc {
 				bizCtx.TenantID = identity.TenantID
 			}
 			c.Set(BizContextKey, &bizCtx)
+			c.Request = c.Request.WithContext(appscope.WithContext(c.Request.Context(), appscope.Scope{PromptGroupID: bizCtx.PromptGroupID, KnowledgeBaseID: bizCtx.KnowledgeBaseID}))
 			c.Next()
 			return
 		}

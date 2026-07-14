@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 
 	"github.com/yourorg/agent_customer_service/internal/admin"
+	"github.com/yourorg/agent_customer_service/internal/appscope"
 	"github.com/yourorg/agent_customer_service/internal/config"
 	modelfactory "github.com/yourorg/agent_customer_service/internal/model"
 )
@@ -62,8 +63,10 @@ func (r *RuntimeRegistry) ResolveEmbeddingConfig(ctx context.Context) config.Emb
 }
 
 func (r *RuntimeRegistry) GetPromptContent(ctx context.Context, key, fallback string) string {
+	groupID := appscope.FromContext(ctx).PromptGroupID
+	cacheKey := groupID + "\x00" + key
 	r.mu.RLock()
-	if content, ok := r.promptContent[key]; ok {
+	if content, ok := r.promptContent[cacheKey]; ok {
 		r.mu.RUnlock()
 		if content == "" {
 			return fallback
@@ -72,9 +75,15 @@ func (r *RuntimeRegistry) GetPromptContent(ctx context.Context, key, fallback st
 	}
 	r.mu.RUnlock()
 
-	content := r.settings.GetPromptContent(ctx, key, fallback)
+	content := r.settings.GetPromptGroupContent(ctx, groupID, key, "")
+	if content == "" && groupID != appscope.DefaultPromptGroupID {
+		content = r.settings.GetPromptGroupContent(ctx, appscope.DefaultPromptGroupID, key, "")
+	}
+	if content == "" {
+		content = r.settings.GetPromptContent(ctx, key, fallback)
+	}
 	r.mu.Lock()
-	r.promptContent[key] = content
+	r.promptContent[cacheKey] = content
 	r.mu.Unlock()
 	return content
 }
@@ -126,5 +135,9 @@ func (r *RuntimeRegistry) InvalidateAgentConfig() {
 func (r *RuntimeRegistry) InvalidatePrompt(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.promptContent, key)
+	for cacheKey := range r.promptContent {
+		if len(cacheKey) >= len(key) && cacheKey[len(cacheKey)-len(key):] == key {
+			delete(r.promptContent, cacheKey)
+		}
+	}
 }

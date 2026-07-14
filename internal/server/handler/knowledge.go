@@ -27,12 +27,13 @@ func (h *KnowledgeHandler) GMList(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("pageNum", c.DefaultQuery("page", "1")))
 	size, _ := strconv.Atoi(c.DefaultQuery("pageSize", c.DefaultQuery("size", "20")))
 	result, err := h.service.List(c.Request.Context(), qa.ListQuery{
-		Category:       c.Query("category"),
-		ClassifyStatus: c.Query("classify_status"),
-		Tag:            c.Query("tag"),
-		Q:              c.Query("q"),
-		Page:           page,
-		Size:           size,
+		KnowledgeBaseID: c.Query("knowledge_base_id"),
+		Category:        c.Query("category"),
+		ClassifyStatus:  c.Query("classify_status"),
+		Tag:             c.Query("tag"),
+		Q:               c.Query("q"),
+		Page:            page,
+		Size:            size,
 	})
 	if err != nil {
 		gmError(c, http.StatusInternalServerError, err.Error())
@@ -43,7 +44,7 @@ func (h *KnowledgeHandler) GMList(c *gin.Context) {
 
 // GMCategories returns all non-empty QA categories for the GM filter.
 func (h *KnowledgeHandler) GMCategories(c *gin.Context) {
-	categories, err := h.service.ListCategories(c.Request.Context())
+	categories, err := h.service.ListCategories(c.Request.Context(), c.Query("knowledge_base_id"))
 	if err != nil {
 		gmError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -53,7 +54,7 @@ func (h *KnowledgeHandler) GMCategories(c *gin.Context) {
 
 // GMTags returns all non-empty QA tags for the GM filter.
 func (h *KnowledgeHandler) GMTags(c *gin.Context) {
-	tags, err := h.service.ListTags(c.Request.Context())
+	tags, err := h.service.ListTags(c.Request.Context(), c.Query("knowledge_base_id"))
 	if err != nil {
 		gmError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -77,7 +78,7 @@ func (h *KnowledgeHandler) GMImport(c *gin.Context) {
 		return
 	}
 	defer f.Close()
-	result, err := h.service.ImportCSV(c.Request.Context(), f)
+	result, err := h.service.ImportCSVTo(c.Request.Context(), f, c.PostForm("knowledge_base_id"))
 	if err != nil {
 		gmError(c, http.StatusBadRequest, err.Error())
 		return
@@ -213,12 +214,13 @@ func (h *KnowledgeHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 	result, err := h.service.List(c.Request.Context(), qa.ListQuery{
-		Category:       c.Query("category"),
-		ClassifyStatus: c.Query("classify_status"),
-		Tag:            c.Query("tag"),
-		Q:              c.Query("q"),
-		Page:           page,
-		Size:           size,
+		KnowledgeBaseID: c.Query("knowledge_base_id"),
+		Category:        c.Query("category"),
+		ClassifyStatus:  c.Query("classify_status"),
+		Tag:             c.Query("tag"),
+		Q:               c.Query("q"),
+		Page:            page,
+		Size:            size,
 	})
 	if err != nil {
 		response.InternalError(c, err.Error())
@@ -264,7 +266,7 @@ func (h *KnowledgeHandler) Reclassify(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Categories(c *gin.Context) {
-	cats, err := h.service.ListCategories(c.Request.Context())
+	cats, err := h.service.ListCategories(c.Request.Context(), c.Query("knowledge_base_id"))
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -273,7 +275,7 @@ func (h *KnowledgeHandler) Categories(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) Tags(c *gin.Context) {
-	tags, err := h.service.ListTags(c.Request.Context())
+	tags, err := h.service.ListTags(c.Request.Context(), c.Query("knowledge_base_id"))
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

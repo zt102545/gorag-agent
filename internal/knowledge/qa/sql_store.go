@@ -54,6 +54,9 @@ func (s *SQLMetaStore) List(ctx context.Context, query ListQuery) (*ListResult, 
 		query.Size = 20
 	}
 	q := s.db.WithContext(ctx).Model(&db.QAItem{})
+	if query.KnowledgeBaseID != "" {
+		q = q.Where("knowledge_base_id = ?", query.KnowledgeBaseID)
+	}
 	if query.Category != "" {
 		q = q.Where("category = ?", query.Category)
 	}
@@ -101,19 +104,26 @@ func (s *SQLMetaStore) ListByCategory(ctx context.Context, category string, page
 	return s.List(ctx, ListQuery{Category: category, Page: page, Size: size})
 }
 
-func (s *SQLMetaStore) ListCategories(ctx context.Context) ([]string, error) {
+func (s *SQLMetaStore) ListCategories(ctx context.Context, knowledgeBaseID string) ([]string, error) {
 	var cats []string
-	err := s.db.WithContext(ctx).Model(&db.QAItem{}).
-		Where("category <> ''").
+	q := s.db.WithContext(ctx).Model(&db.QAItem{}).Where("category <> ''")
+	if knowledgeBaseID != "" {
+		q = q.Where("knowledge_base_id = ?", knowledgeBaseID)
+	}
+	err := q.
 		Distinct("category").
 		Order("category").
 		Pluck("category", &cats).Error
 	return cats, err
 }
 
-func (s *SQLMetaStore) ListTags(ctx context.Context) ([]string, error) {
+func (s *SQLMetaStore) ListTags(ctx context.Context, knowledgeBaseID string) ([]string, error) {
 	var rows []db.QAItem
-	if err := s.db.WithContext(ctx).Select("tags").Find(&rows).Error; err != nil {
+	q := s.db.WithContext(ctx).Select("tags")
+	if knowledgeBaseID != "" {
+		q = q.Where("knowledge_base_id = ?", knowledgeBaseID)
+	}
+	if err := q.Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	set := map[string]struct{}{}
@@ -133,22 +143,38 @@ func (s *SQLMetaStore) ListTags(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+func (s *SQLMetaStore) FilterIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]struct{}, error) {
+	allowed := make(map[string]struct{}, len(ids))
+	if len(ids) == 0 {
+		return allowed, nil
+	}
+	var rows []string
+	if err := s.db.WithContext(ctx).Model(&db.QAItem{}).Where("knowledge_base_id = ? AND id IN ?", knowledgeBaseID, ids).Pluck("id", &rows).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range rows {
+		allowed[id] = struct{}{}
+	}
+	return allowed, nil
+}
+
 func toDBItem(item *Item) *db.QAItem {
 	status := item.ClassifyStatus
 	if status == "" {
 		status = ClassifyNone
 	}
 	return &db.QAItem{
-		ID:             item.ID,
-		Question:       item.Question,
-		Answer:         item.Answer,
-		Category:       item.Category,
-		Tags:           db.StringSlice(item.Tags),
-		ClassifyStatus: status,
-		ClassifyError:  item.ClassifyError,
-		ClassifiedAt:   item.ClassifiedAt,
-		CreatedAt:      item.CreatedAt,
-		UpdatedAt:      item.UpdatedAt,
+		ID:              item.ID,
+		KnowledgeBaseID: item.KnowledgeBaseID,
+		Question:        item.Question,
+		Answer:          item.Answer,
+		Category:        item.Category,
+		Tags:            db.StringSlice(item.Tags),
+		ClassifyStatus:  status,
+		ClassifyError:   item.ClassifyError,
+		ClassifiedAt:    item.ClassifiedAt,
+		CreatedAt:       item.CreatedAt,
+		UpdatedAt:       item.UpdatedAt,
 	}
 }
 
@@ -158,16 +184,17 @@ func fromDBItem(row *db.QAItem) *Item {
 		tags = []string{}
 	}
 	return &Item{
-		ID:             row.ID,
-		Question:       row.Question,
-		Answer:         row.Answer,
-		Category:       row.Category,
-		Tags:           tags,
-		ClassifyStatus: row.ClassifyStatus,
-		ClassifyError:  row.ClassifyError,
-		ClassifiedAt:   row.ClassifiedAt,
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
+		ID:              row.ID,
+		KnowledgeBaseID: row.KnowledgeBaseID,
+		Question:        row.Question,
+		Answer:          row.Answer,
+		Category:        row.Category,
+		Tags:            tags,
+		ClassifyStatus:  row.ClassifyStatus,
+		ClassifyError:   row.ClassifyError,
+		ClassifiedAt:    row.ClassifiedAt,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"github.com/yourorg/agent_customer_service/internal/appscope"
 	"github.com/yourorg/agent_customer_service/internal/config"
 	"github.com/yourorg/agent_customer_service/internal/db"
 )
@@ -535,7 +536,21 @@ func (s *SettingsService) GetPrompt(ctx context.Context, key string) (*db.Prompt
 
 func (s *SettingsService) UpdatePrompt(ctx context.Context, key, content string) (*db.Prompt, error) {
 	row := &db.Prompt{Key: key, Content: content, UpdatedAt: time.Now()}
-	if err := s.db.WithContext(ctx).Save(row).Error; err != nil {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(row).Error; err != nil {
+			return err
+		}
+		var item db.PromptGroupItem
+		err := tx.Where("group_id = ? AND prompt_key = ?", appscope.DefaultPromptGroupID, key).First(&item).Error
+		if err != nil && err != gorm.ErrRecordNotFound {
+			return err
+		}
+		if err == gorm.ErrRecordNotFound {
+			item = db.PromptGroupItem{ID: uuid.NewString(), GroupID: appscope.DefaultPromptGroupID, Key: key}
+		}
+		item.Content, item.UpdatedAt = content, time.Now()
+		return tx.Save(&item).Error
+	}); err != nil {
 		return nil, err
 	}
 	return row, nil
@@ -547,6 +562,14 @@ func (s *SettingsService) GetPromptContent(ctx context.Context, key, fallback st
 		return fallback
 	}
 	return row.Content
+}
+
+func (s *SettingsService) GetPromptGroupContent(ctx context.Context, groupID, key, fallback string) string {
+	var row db.PromptGroupItem
+	if err := s.db.WithContext(ctx).Where("group_id = ? AND prompt_key = ?", groupID, key).First(&row).Error; err == nil && row.Content != "" {
+		return row.Content
+	}
+	return fallback
 }
 
 const defaultAgentInstruction = `你是智能客服助手，负责解答用户关于产品、订单、退款、配送等问题。

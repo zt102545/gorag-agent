@@ -210,6 +210,8 @@ func (h *CallerTokenHandler) Create(c *gin.Context) {
 		"allowed_origins":    row.AllowedOrigins,
 		"ip_rate_per_minute": row.IPRatePerMinute,
 		"ip_daily_quota":     row.IPDailyQuota,
+		"prompt_group_id":    row.PromptGroupID,
+		"knowledge_base_id":  row.KnowledgeBaseID,
 	})
 }
 

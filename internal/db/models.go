@@ -100,21 +100,24 @@ type CallerToken struct {
 	AllowedOrigins  StringSlice `gorm:"type:text" json:"allowed_origins,omitempty"`
 	IPRatePerMinute int         `gorm:"not null;default:60" json:"ip_rate_per_minute"`
 	IPDailyQuota    int         `gorm:"not null;default:2000" json:"ip_daily_quota"`
+	PromptGroupID   string      `gorm:"size:36;index" json:"prompt_group_id,omitempty"`
+	KnowledgeBaseID string      `gorm:"size:36;index" json:"knowledge_base_id,omitempty"`
 }
 
 func (CallerToken) TableName() string { return "caller_tokens" }
 
 type QAItem struct {
-	ID             string      `gorm:"primaryKey;size:36" json:"id"`
-	Question       string      `gorm:"type:text;not null" json:"question"`
-	Answer         string      `gorm:"type:text;not null" json:"answer"`
-	Category       string      `gorm:"size:128;index" json:"category"`
-	Tags           StringSlice `gorm:"type:text" json:"tags"`
-	ClassifyStatus string      `gorm:"size:32;not null;index;default:none" json:"classify_status"`
-	ClassifyError  string      `gorm:"type:text" json:"classify_error,omitempty"`
-	ClassifiedAt   *time.Time  `json:"classified_at,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
+	ID              string      `gorm:"primaryKey;size:36" json:"id"`
+	KnowledgeBaseID string      `gorm:"size:36;not null;default:00000000-0000-0000-0000-000000000002;index" json:"knowledge_base_id"`
+	Question        string      `gorm:"type:text;not null" json:"question"`
+	Answer          string      `gorm:"type:text;not null" json:"answer"`
+	Category        string      `gorm:"size:128;index" json:"category"`
+	Tags            StringSlice `gorm:"type:text" json:"tags"`
+	ClassifyStatus  string      `gorm:"size:32;not null;index;default:none" json:"classify_status"`
+	ClassifyError   string      `gorm:"type:text" json:"classify_error,omitempty"`
+	ClassifiedAt    *time.Time  `json:"classified_at,omitempty"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
 }
 
 func (QAItem) TableName() string { return "qa_items" }
@@ -218,6 +221,38 @@ type Prompt struct {
 }
 
 func (Prompt) TableName() string { return "prompts" }
+
+type PromptGroup struct {
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	Name        string    `gorm:"size:128;not null;uniqueIndex" json:"name"`
+	Description string    `gorm:"size:255" json:"description,omitempty"`
+	IsDefault   bool      `gorm:"not null;default:false;index" json:"is_default"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (PromptGroup) TableName() string { return "prompt_groups" }
+
+type PromptGroupItem struct {
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	GroupID   string    `gorm:"size:36;not null;uniqueIndex:ux_prompt_group_key" json:"group_id"`
+	Key       string    `gorm:"column:prompt_key;size:64;not null;uniqueIndex:ux_prompt_group_key" json:"key"`
+	Content   string    `gorm:"type:text;not null" json:"content"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (PromptGroupItem) TableName() string { return "prompt_group_items" }
+
+type KnowledgeBase struct {
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	Name        string    `gorm:"size:128;not null;uniqueIndex" json:"name"`
+	Description string    `gorm:"size:255" json:"description,omitempty"`
+	IsDefault   bool      `gorm:"not null;default:false;index" json:"is_default"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (KnowledgeBase) TableName() string { return "knowledge_bases" }
 
 type AgentConfig struct {
 	Key                string    `gorm:"column:config_key;primaryKey;size:64" json:"key"`

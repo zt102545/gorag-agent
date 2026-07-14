@@ -141,3 +141,5 @@ func (s *Service) EmbeddingConfigured(ctx context.Context) bool {
 func (s *Service) RuntimeRegistry() *RuntimeRegistry {
 	return s.runtime
 }
+
+func (s *Service) InvalidatePrompt(key string) { s.runtime.InvalidatePrompt(key) }

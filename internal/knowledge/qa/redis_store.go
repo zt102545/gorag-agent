@@ -117,7 +117,8 @@ func (s *RedisMetaStore) List(ctx context.Context, query ListQuery) (*ListResult
 	return &ListResult{Total: total, Items: items[start:end]}, nil
 }
 
-func (s *RedisMetaStore) ListCategories(ctx context.Context) ([]string, error) {
+func (s *RedisMetaStore) ListCategories(ctx context.Context, knowledgeBaseID string) ([]string, error) {
+	_ = knowledgeBaseID
 	keys, err := s.client.Keys(ctx, categoryKeyPrefix+"*").Result()
 	if err != nil {
 		return nil, err
@@ -130,7 +131,7 @@ func (s *RedisMetaStore) ListCategories(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (s *RedisMetaStore) ListTags(ctx context.Context) ([]string, error) {
+func (s *RedisMetaStore) ListTags(ctx context.Context, knowledgeBaseID string) ([]string, error) {
 	ids, err := s.client.SMembers(ctx, allIDsKey).Result()
 	if err != nil {
 		return nil, err
@@ -139,6 +140,9 @@ func (s *RedisMetaStore) ListTags(ctx context.Context) ([]string, error) {
 	for _, id := range ids {
 		item, err := s.Get(ctx, id)
 		if err != nil {
+			continue
+		}
+		if knowledgeBaseID != "" && item.KnowledgeBaseID != knowledgeBaseID {
 			continue
 		}
 		for _, t := range item.Tags {
@@ -153,6 +157,20 @@ func (s *RedisMetaStore) ListTags(ctx context.Context) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func (s *RedisMetaStore) FilterIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]struct{}, error) {
+	allowed := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		item, err := s.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		if item.KnowledgeBaseID == knowledgeBaseID {
+			allowed[id] = struct{}{}
+		}
+	}
+	return allowed, nil
 }
 
 func (s *RedisMetaStore) listAll(ctx context.Context, page, size int) (*ListResult, error) {

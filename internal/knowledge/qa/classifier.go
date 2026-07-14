@@ -87,8 +87,8 @@ func (c *Classifier) process(ctx context.Context, id string) error {
 		return err
 	}
 
-	cats, _ := c.service.ListCategories(ctx)
-	tags, _ := c.service.ListTags(ctx)
+	cats, _ := c.service.ListCategories(ctx, item.KnowledgeBaseID)
+	tags, _ := c.service.ListTags(ctx, item.KnowledgeBaseID)
 	tmpl := c.prompts.GetPromptContent(ctx, "qa_classify", defaultClassifyFallback)
 	prompt := strings.ReplaceAll(tmpl, "{{categories}}", strings.Join(cats, ", "))
 	prompt = strings.ReplaceAll(prompt, "{{tags}}", strings.Join(tags, ", "))

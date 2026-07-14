@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"github.com/yourorg/agent_customer_service/internal/appscope"
 	"github.com/yourorg/agent_customer_service/internal/config"
 	"github.com/yourorg/agent_customer_service/internal/db"
 )
@@ -46,6 +47,8 @@ type CallerIdentity struct {
 	AuthType        string
 	IPRatePerMinute int
 	IPDailyQuota    int
+	PromptGroupID   string
+	KnowledgeBaseID string
 }
 
 type UserTokenClaims struct {
@@ -258,9 +261,19 @@ type CreateCallerTokenRequest struct {
 	AllowedOrigins  []string   `json:"allowed_origins"`
 	IPRatePerMinute int        `json:"ip_rate_per_minute"`
 	IPDailyQuota    int        `json:"ip_daily_quota"`
+	PromptGroupID   string     `json:"prompt_group_id"`
+	KnowledgeBaseID string     `json:"knowledge_base_id"`
 }
 
 func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRequest) (plain string, row *db.CallerToken, err error) {
+	hasExplicitScope := strings.TrimSpace(req.PromptGroupID) != "" || strings.TrimSpace(req.KnowledgeBaseID) != ""
+	req.PromptGroupID = firstNonEmpty(req.PromptGroupID, appscope.DefaultPromptGroupID)
+	req.KnowledgeBaseID = firstNonEmpty(req.KnowledgeBaseID, appscope.DefaultKnowledgeBaseID)
+	if hasExplicitScope {
+		if err := s.validateScopeBindings(ctx, req.PromptGroupID, req.KnowledgeBaseID); err != nil {
+			return "", nil, err
+		}
+	}
 	channelID := strings.TrimSpace(req.ChannelID)
 	if req.PublicAccess && channelID == "" {
 		return "", nil, fmt.Errorf("channel_id is required for public access")
@@ -295,6 +308,8 @@ func (s *Service) CreateCallerToken(ctx context.Context, req CreateCallerTokenRe
 		AllowedOrigins:  normalizeOrigins(req.AllowedOrigins),
 		IPRatePerMinute: ratePerMinute,
 		IPDailyQuota:    dailyQuota,
+		PromptGroupID:   req.PromptGroupID,
+		KnowledgeBaseID: req.KnowledgeBaseID,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
@@ -438,7 +453,7 @@ func (s *Service) validateUserToken(raw string) (*CallerIdentity, error) {
 		ratePerMinute, dailyQuota = publicLimitDefaults(app.IPRatePerMinute, app.IPDailyQuota)
 		authType = "public_user_token"
 	}
-	return &CallerIdentity{TokenID: app.ID, Name: app.Name, CallerUserID: claims.CallerUserID, ChannelID: claims.ChannelID, TenantID: claims.TenantID, AuthType: authType, IPRatePerMinute: ratePerMinute, IPDailyQuota: dailyQuota}, nil
+	return &CallerIdentity{TokenID: app.ID, Name: app.Name, CallerUserID: claims.CallerUserID, ChannelID: claims.ChannelID, TenantID: claims.TenantID, AuthType: authType, IPRatePerMinute: ratePerMinute, IPDailyQuota: dailyQuota, PromptGroupID: firstNonEmpty(app.PromptGroupID, appscope.DefaultPromptGroupID), KnowledgeBaseID: firstNonEmpty(app.KnowledgeBaseID, appscope.DefaultKnowledgeBaseID)}, nil
 }
 
 func (s *Service) ListCallerTokens(ctx context.Context) ([]db.CallerToken, error) {
@@ -458,6 +473,8 @@ type UpdateCallerTokenRequest struct {
 	AllowedOrigins  *[]string  `json:"allowed_origins"`
 	IPRatePerMinute *int       `json:"ip_rate_per_minute"`
 	IPDailyQuota    *int       `json:"ip_daily_quota"`
+	PromptGroupID   *string    `json:"prompt_group_id"`
+	KnowledgeBaseID *string    `json:"knowledge_base_id"`
 }
 
 func (s *Service) UpdateCallerToken(ctx context.Context, id string, req UpdateCallerTokenRequest) error {
@@ -483,6 +500,20 @@ func (s *Service) UpdateCallerToken(ctx context.Context, id string, req UpdateCa
 	}
 	updates := map[string]any{
 		"updated_at": time.Now(),
+	}
+	promptGroupID, knowledgeBaseID := firstNonEmpty(current.PromptGroupID, appscope.DefaultPromptGroupID), firstNonEmpty(current.KnowledgeBaseID, appscope.DefaultKnowledgeBaseID)
+	if req.PromptGroupID != nil {
+		promptGroupID = firstNonEmpty(*req.PromptGroupID, appscope.DefaultPromptGroupID)
+		updates["prompt_group_id"] = promptGroupID
+	}
+	if req.KnowledgeBaseID != nil {
+		knowledgeBaseID = firstNonEmpty(*req.KnowledgeBaseID, appscope.DefaultKnowledgeBaseID)
+		updates["knowledge_base_id"] = knowledgeBaseID
+	}
+	if req.PromptGroupID != nil || req.KnowledgeBaseID != nil {
+		if err := s.validateScopeBindings(ctx, promptGroupID, knowledgeBaseID); err != nil {
+			return err
+		}
 	}
 	if publicAccess && current.AppID == "" {
 		updates["app_id"] = "app_" + strings.ReplaceAll(uuid.NewString(), "-", "")
@@ -602,12 +633,31 @@ func (s *Service) ValidateCallerToken(ctx context.Context, raw string) (*CallerI
 	now := time.Now()
 	_ = s.db.WithContext(ctx).Model(&row).Update("last_used_at", now).Error
 	return &CallerIdentity{
-		TokenID:   row.ID,
-		Name:      row.Name,
-		ChannelID: row.ChannelID,
-		TenantID:  row.TenantID,
-		AuthType:  "legacy_caller_token",
+		TokenID:         row.ID,
+		Name:            row.Name,
+		ChannelID:       row.ChannelID,
+		TenantID:        row.TenantID,
+		AuthType:        "legacy_caller_token",
+		PromptGroupID:   firstNonEmpty(row.PromptGroupID, appscope.DefaultPromptGroupID),
+		KnowledgeBaseID: firstNonEmpty(row.KnowledgeBaseID, appscope.DefaultKnowledgeBaseID),
 	}, nil
+}
+
+func (s *Service) validateScopeBindings(ctx context.Context, promptGroupID, knowledgeBaseID string) error {
+	var count int64
+	if err := s.db.WithContext(ctx).Model(&db.PromptGroup{}).Where("id = ?", promptGroupID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("prompt group not found")
+	}
+	if err := s.db.WithContext(ctx).Model(&db.KnowledgeBase{}).Where("id = ?", knowledgeBaseID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("knowledge base not found")
+	}
+	return nil
 }
 
 func (s *Service) CanAccessSession(ctx context.Context, sessionID, tokenID, callerUserID, channelID, tenantID string) bool {
@@ -616,4 +666,13 @@ func (s *Service) CanAccessSession(ctx context.Context, sessionID, tokenID, call
 		return false
 	}
 	return row.CallerTokenID == tokenID && row.ExternalUserID == callerUserID && row.ChannelID == channelID && row.TenantID == tenantID
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

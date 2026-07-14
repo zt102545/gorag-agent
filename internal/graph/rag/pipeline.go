@@ -11,10 +11,15 @@ import (
 )
 
 type Service struct {
-	store              vectorstore.Store
-	embedder           embedding.Embedder
-	topK               int
-	useVectorForSearch bool
+	store               vectorstore.Store
+	embedder            embedding.Embedder
+	topK                int
+	useVectorForSearch  bool
+	filterKnowledgeBase func(context.Context, string, []string) (map[string]struct{}, error)
+}
+
+func (s *Service) SetKnowledgeBaseFilter(filter func(context.Context, string, []string) (map[string]struct{}, error)) {
+	s.filterKnowledgeBase = filter
 }
 
 type SearchHit struct {
@@ -49,12 +54,16 @@ func (s *Service) Search(ctx context.Context, query string) (string, error) {
 }
 
 func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, error) {
-	records, err := s.store.SearchText(ctx, query, s.textTopK())
+	candidateLimit := s.topK * 20
+	if candidateLimit < 100 {
+		candidateLimit = 100
+	}
+	records, err := s.store.SearchText(ctx, query, candidateLimit)
 	if err != nil && !s.useVectorForSearch {
 		return nil, fmt.Errorf("retrieve text documents: %w", err)
 	}
 	if !s.useVectorForSearch {
-		return searchHitsFromRecords(records), nil
+		return s.filterRecords(ctx, records)
 	}
 
 	vecs, err := s.embedder.EmbedStrings(ctx, []string{query})
@@ -69,15 +78,40 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 		qv[i] = float32(v)
 	}
 
-	vectorRecords, vectorErr := s.store.Search(ctx, qv, s.topK)
+	vectorRecords, vectorErr := s.store.Search(ctx, qv, candidateLimit)
 	if vectorErr != nil {
 		if err != nil {
 			return nil, fmt.Errorf("retrieve text documents: %v; retrieve vector documents: %w", err, vectorErr)
 		}
 		return nil, fmt.Errorf("retrieve documents: %w", vectorErr)
 	}
-	records = mergeRecords(records, vectorRecords, s.topK)
-	return searchHitsFromRecords(records), nil
+	records = mergeRecords(records, vectorRecords, candidateLimit)
+	return s.filterRecords(ctx, records)
+}
+
+func (s *Service) filterRecords(ctx context.Context, records []vectorstore.Record) ([]SearchHit, error) {
+	if s.filterKnowledgeBase == nil {
+		return searchHitsFromRecords(records), nil
+	}
+	ids := make([]string, 0, len(records))
+	for _, rec := range records {
+		ids = append(ids, rec.ID)
+	}
+	allowed, err := s.filterKnowledgeBase(ctx, "", ids)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]vectorstore.Record, 0, s.topK)
+	for _, rec := range records {
+		if _, ok := allowed[rec.ID]; !ok {
+			continue
+		}
+		filtered = append(filtered, rec)
+		if len(filtered) >= s.topK {
+			break
+		}
+	}
+	return searchHitsFromRecords(filtered), nil
 }
 
 func (s *Service) textTopK() int {

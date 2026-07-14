@@ -389,7 +389,14 @@ func exceedsContextLimit(maxMessages, maxChars int, history []*schema.Message, c
 
 func (h *ChatHandler) buildMessages(ctx context.Context, history []*schema.Message, content string, decision chatDecision) (*schema.Message, []*schema.Message) {
 	userMsg := schema.UserMessage(content)
-	messages := history
+	messages := make([]*schema.Message, 0, len(history)+3)
+	if h.settings != nil {
+		instruction := h.settings.GetPromptContent(ctx, admin.PromptAgentInstruction, "")
+		if strings.TrimSpace(instruction) != "" {
+			messages = append(messages, schema.SystemMessage(instruction))
+		}
+	}
+	messages = append(messages, history...)
 	if decision.Intent != nil {
 		hint := fmt.Sprintf("意图分析结果：intent=%s need_search=%t confidence=%.2f reason=%s。请根据 need_search 决定是否调用 knowledge_search；need_search=false 时不要调用。",
 			decision.Intent.Intent, decision.Intent.NeedSearch, decision.Intent.Confidence, decision.Intent.Reason)

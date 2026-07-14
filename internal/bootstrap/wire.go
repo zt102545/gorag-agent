@@ -10,6 +10,7 @@ import (
 
 	"github.com/yourorg/agent_customer_service/internal/admin"
 	"github.com/yourorg/agent_customer_service/internal/agent"
+	scopesapp "github.com/yourorg/agent_customer_service/internal/application/scopes"
 	"github.com/yourorg/agent_customer_service/internal/auth"
 	"github.com/yourorg/agent_customer_service/internal/config"
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
@@ -58,6 +59,10 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		_ = redisClient.Close()
 		return nil, nil, fmt.Errorf("seed settings: %w", err)
 	}
+	if err := scopesapp.SeedDefaults(ctx, gdb); err != nil {
+		_ = redisClient.Close()
+		return nil, nil, fmt.Errorf("seed prompt and knowledge scopes: %w", err)
+	}
 
 	sessionStore, sessionApp := newSessionModule(gdb)
 	checkpointStore := newCheckpointStore(redisClient, cfg)
@@ -82,6 +87,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	unansweredService := unanswered.NewService(gdb)
 
 	ragService := rag.NewService(vs, embedder, cfg.VectorStore.TopK)
+	ragService.SetKnowledgeBaseFilter(qaService.FilterKnowledgeBaseIDs)
 	ragService.SetUseVectorForSearch(runtime.ResolveEmbeddingConfig(ctx).UseVectorForSearch)
 
 	instruction := runtime.GetPromptContent(ctx, admin.PromptAgentInstruction, agent.CustomerServiceInstruction)
@@ -102,6 +108,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	intentAnalyzer := rag.NewIntentAnalyzer(runtime, newModelFactory(runtime), admin.PromptIntentRoute, 0.6)
 	wecomService := wecom.NewService(gdb, wecomsdk.NativeFactory{}, ragService, newModelFactory(runtime), unansweredService, cfg.WeCom.EncryptionKey)
 	wecomService.Start(ctx)
+	scopeService := scopesapp.NewService(gdb, qaService)
 
 	sseWriter := sse.NewWriter()
 	router := newHTTPRouter(cfg, &server.Deps{
@@ -117,6 +124,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		AdminSessionHandler: handler.NewAdminSessionHandler(sessionApp),
 		AIErrorHandler:      handler.NewAIErrorHandler(aiErrorSvc),
 		UnansweredHandler:   handler.NewUnansweredHandler(unansweredService, knowledgeApp),
+		ScopeHandler:        handler.NewScopeHandler(scopeService, settingsApp),
 		WeComHandler:        handler.NewWeComHandler(wecomService),
 		PublicLimiter:       publicLimiter,
 	})
