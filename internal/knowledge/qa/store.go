@@ -1,6 +1,9 @@
 package qa
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type MetaStore interface {
 	Save(ctx context.Context, item *Item) error
@@ -13,4 +16,5 @@ type MetaStore interface {
 	ListCategories(ctx context.Context, knowledgeBaseID string) ([]string, error)
 	ListTags(ctx context.Context, knowledgeBaseID string) ([]string, error)
 	FilterIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]struct{}, error)
+	CreatedAtByIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]time.Time, error)
 }

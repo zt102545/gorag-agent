@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/embedding"
 
@@ -16,19 +17,25 @@ type Service struct {
 	topK                int
 	useVectorForSearch  bool
 	filterKnowledgeBase func(context.Context, string, []string) (map[string]struct{}, error)
+	loadCreatedAt       func(context.Context, string, []string) (map[string]time.Time, error)
 }
 
 func (s *Service) SetKnowledgeBaseFilter(filter func(context.Context, string, []string) (map[string]struct{}, error)) {
 	s.filterKnowledgeBase = filter
 }
 
+func (s *Service) SetKnowledgeBaseCreatedAtLoader(loader func(context.Context, string, []string) (map[string]time.Time, error)) {
+	s.loadCreatedAt = loader
+}
+
 type SearchHit struct {
-	ID       string   `json:"id"`
-	Question string   `json:"question"`
-	Answer   string   `json:"answer"`
-	Category string   `json:"category,omitempty"`
-	Tags     []string `json:"tags,omitempty"`
-	Score    float64  `json:"score,omitempty"`
+	ID        string     `json:"id"`
+	Question  string     `json:"question"`
+	Answer    string     `json:"answer"`
+	Category  string     `json:"category,omitempty"`
+	Tags      []string   `json:"tags,omitempty"`
+	Score     float64    `json:"score,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 
 func NewService(store vectorstore.Store, embedder embedding.Embedder, topK int) *Service {
@@ -111,7 +118,29 @@ func (s *Service) filterRecords(ctx context.Context, records []vectorstore.Recor
 			break
 		}
 	}
-	return searchHitsFromRecords(filtered), nil
+	hits := searchHitsFromRecords(filtered)
+	if s.loadCreatedAt == nil || len(hits) == 0 {
+		return hits, nil
+	}
+	createdAt, err := s.loadCreatedAt(ctx, "", idsFromHits(hits))
+	if err != nil {
+		return nil, fmt.Errorf("load QA creation times: %w", err)
+	}
+	for i := range hits {
+		if value, ok := createdAt[hits[i].ID]; ok {
+			value := value
+			hits[i].CreatedAt = &value
+		}
+	}
+	return hits, nil
+}
+
+func idsFromHits(hits []SearchHit) []string {
+	ids := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		ids = append(ids, hit.ID)
+	}
+	return ids
 }
 
 func (s *Service) textTopK() int {
@@ -165,7 +194,12 @@ func searchHitsFromRecords(records []vectorstore.Record) []SearchHit {
 }
 
 func FormatHits(hits []SearchHit) string {
+	return FormatHitsAt(hits, time.Now())
+}
+
+func FormatHitsAt(hits []SearchHit, now time.Time) string {
 	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("当前时间: %s\n\n", now.Format(time.RFC3339)))
 	for i, rec := range hits {
 		builder.WriteString(fmt.Sprintf("[%d]", i+1))
 		if rec.Category != "" {
@@ -177,6 +211,9 @@ func FormatHits(hits []SearchHit) string {
 		builder.WriteString("\n")
 		builder.WriteString(fmt.Sprintf("Q: %s\n", rec.Question))
 		builder.WriteString(fmt.Sprintf("A: %s\n", rec.Answer))
+		if rec.CreatedAt != nil && !rec.CreatedAt.IsZero() {
+			builder.WriteString(fmt.Sprintf("QA入库时间: %s\n", rec.CreatedAt.Format(time.RFC3339)))
+		}
 		if rec.Score != 0 {
 			builder.WriteString(fmt.Sprintf("Score: %.4f\n", rec.Score))
 		}

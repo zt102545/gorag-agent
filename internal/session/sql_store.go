@@ -186,8 +186,7 @@ func (s *SQLStore) AppendMessages(ctx context.Context, sessionID string, params 
 			return err
 		}
 		var expiredIDs []string
-		if err := tx.Model(&db.Message{}).Where("session_id = ?", sessionID).
-			Order("created_at desc").Limit(-1).Offset(historyMessageLimit).Pluck("id", &expiredIDs).Error; err != nil {
+		if err := expiredMessagesQuery(tx, sessionID).Pluck("id", &expiredIDs).Error; err != nil {
 			return err
 		}
 		if len(expiredIDs) > 0 {
@@ -203,6 +202,13 @@ func (s *SQLStore) AppendMessages(ctx context.Context, sessionID string, params 
 		}
 		return tx.Model(&db.Session{}).Where("id = ?", sessionID).Updates(updates).Error
 	})
+}
+
+func expiredMessagesQuery(gdb *gorm.DB, sessionID string) *gorm.DB {
+	// GORM renders Limit(-1).Offset(n) as a bare OFFSET clause. SQLite accepts
+	// that form, but MySQL requires LIMIT whenever OFFSET is present.
+	return gdb.Model(&db.Message{}).Where("session_id = ?", sessionID).
+		Order("created_at desc").Limit(int(^uint(0) >> 1)).Offset(historyMessageLimit)
 }
 
 func (s *SQLStore) List(ctx context.Context, query ListQuery) (int64, []Meta, error) {

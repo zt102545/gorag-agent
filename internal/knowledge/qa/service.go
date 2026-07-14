@@ -193,6 +193,10 @@ func (s *Service) FilterKnowledgeBaseIDs(ctx context.Context, knowledgeBaseID st
 	return s.meta.FilterIDs(ctx, firstNonEmpty(knowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID), ids)
 }
 
+func (s *Service) KnowledgeBaseCreatedAt(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]time.Time, error) {
+	return s.meta.CreatedAtByIDs(ctx, firstNonEmpty(knowledgeBaseID, appscope.FromContext(ctx).KnowledgeBaseID), ids)
+}
+
 func (s *Service) ImportCSV(ctx context.Context, r io.Reader) (*ImportResult, error) {
 	return s.ImportCSVTo(ctx, r, "")
 }

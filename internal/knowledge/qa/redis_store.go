@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -171,6 +172,20 @@ func (s *RedisMetaStore) FilterIDs(ctx context.Context, knowledgeBaseID string, 
 		}
 	}
 	return allowed, nil
+}
+
+func (s *RedisMetaStore) CreatedAtByIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]time.Time, error) {
+	createdAt := make(map[string]time.Time, len(ids))
+	for _, id := range ids {
+		item, err := s.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		if item.KnowledgeBaseID == knowledgeBaseID {
+			createdAt[id] = item.CreatedAt
+		}
+	}
+	return createdAt, nil
 }
 
 func (s *RedisMetaStore) listAll(ctx context.Context, page, size int) (*ListResult, error) {

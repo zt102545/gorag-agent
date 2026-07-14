@@ -158,6 +158,27 @@ func (s *SQLMetaStore) FilterIDs(ctx context.Context, knowledgeBaseID string, id
 	return allowed, nil
 }
 
+func (s *SQLMetaStore) CreatedAtByIDs(ctx context.Context, knowledgeBaseID string, ids []string) (map[string]time.Time, error) {
+	createdAt := make(map[string]time.Time, len(ids))
+	if len(ids) == 0 {
+		return createdAt, nil
+	}
+	var rows []struct {
+		ID        string
+		CreatedAt time.Time
+	}
+	if err := s.db.WithContext(ctx).Model(&db.QAItem{}).
+		Select("id", "created_at").
+		Where("knowledge_base_id = ? AND id IN ?", knowledgeBaseID, ids).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		createdAt[row.ID] = row.CreatedAt
+	}
+	return createdAt, nil
+}
+
 func toDBItem(item *Item) *db.QAItem {
 	status := item.ClassifyStatus
 	if status == "" {
