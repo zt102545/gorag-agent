@@ -105,7 +105,6 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	classifier := qa.NewClassifier(qaService, runtime, newModelFactory(runtime), cfg.Classify.Workers, aiErrorSvc)
 	classifier.Start(ctx)
 
-	intentAnalyzer := rag.NewIntentAnalyzer(runtime, newModelFactory(runtime), admin.PromptIntentRoute, 0.6)
 	wecomService := wecom.NewService(gdb, wecomsdk.NativeFactory{}, ragService, newModelFactory(runtime), unansweredService, cfg.WeCom.EncryptionKey)
 	wecomService.Start(ctx)
 	scopeService := scopesapp.NewService(gdb, qaService)
@@ -114,7 +113,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	router := newHTTPRouter(cfg, &server.Deps{
 		Auth:                authSvc,
 		SessionHandler:      handler.NewSessionHandler(sessionApp),
-		ChatHandler:         handler.NewChatHandler(runner.Inner(), sessionStore, sseWriter, ragService, intentAnalyzer, settingsApp, aiErrorSvc, unansweredService),
+		ChatHandler:         handler.NewChatHandler(runner.Inner(), sessionStore, sseWriter, settingsApp, aiErrorSvc, unansweredService),
 		ApprovalHandler:     handler.NewApprovalHandler(runner.Inner(), sessionStore, sseWriter),
 		KnowledgeHandler:    handler.NewKnowledgeHandler(knowledgeApp, knowledgeJobs, settingsApp),
 		AuthHandler:         handler.NewAuthHandler(authSvc),

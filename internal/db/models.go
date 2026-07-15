@@ -257,7 +257,7 @@ type AgentConfig struct {
 	Key                string    `gorm:"column:config_key;primaryKey;size:64" json:"key"`
 	DefaultReply       string    `gorm:"type:text;not null" json:"default_reply"`
 	MaxContextChars    int       `gorm:"not null;default:12000" json:"max_context_chars"`
-	MaxContextMessages int       `gorm:"not null;default:20" json:"max_context_messages"`
+	MaxContextMessages int       `gorm:"not null;default:10" json:"max_context_messages"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 

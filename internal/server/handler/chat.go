@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/yourorg/agent_customer_service/internal/admin"
+	agenttools "github.com/yourorg/agent_customer_service/internal/agent/tools"
 	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
 	"github.com/yourorg/agent_customer_service/internal/graph/rag"
 	"github.com/yourorg/agent_customer_service/internal/knowledge/unanswered"
@@ -29,20 +30,16 @@ type ChatHandler struct {
 	runner       *adk.Runner
 	sessionStore session.Store
 	sseWriter    *sse.Writer
-	ragService   *rag.Service
-	intent       *rag.IntentAnalyzer
 	settings     *settingsapp.Service
 	aiErrors     *admin.AIErrorService
 	unanswered   *unanswered.Service
 }
 
-func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *sse.Writer, ragService *rag.Service, intent *rag.IntentAnalyzer, settings *settingsapp.Service, aiErrors *admin.AIErrorService, unansweredService *unanswered.Service) *ChatHandler {
+func NewChatHandler(runner *adk.Runner, sessionStore session.Store, sseWriter *sse.Writer, settings *settingsapp.Service, aiErrors *admin.AIErrorService, unansweredService *unanswered.Service) *ChatHandler {
 	return &ChatHandler{
 		runner:       runner,
 		sessionStore: sessionStore,
 		sseWriter:    sseWriter,
-		ragService:   ragService,
-		intent:       intent,
 		settings:     settings,
 		aiErrors:     aiErrors,
 		unanswered:   unansweredService,
@@ -74,8 +71,6 @@ type chatDecision struct {
 	NeedHuman        bool
 	UsedDefaultReply bool
 	KnowledgeShared  bool
-	Intent           *rag.IntentResult
-	QueryRelation    *rag.QueryRelationResult
 	SearchQuery      string
 	SearchHits       []rag.SearchHit
 	Trace            []chatTraceStep
@@ -141,6 +136,7 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		response.InternalError(c, err.Error())
 		return
 	}
+	history = h.limitAgentHistory(c.Request.Context(), history)
 
 	bizCtx := middleware.GetBizContext(c)
 	requestID := c.GetString(middleware.RequestIDKey)
@@ -194,7 +190,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	c.Header("X-Accel-Buffering", "no")
 	c.Header("X-Request-ID", requestID)
 
-	iter := h.runner.Run(c.Request.Context(), messages, adk.WithCheckPointID(sessionID))
+	searches := &toolSearchCollector{}
+	runCtx := agenttools.WithSearchObserver(c.Request.Context(), searches.Observe)
+	iter := h.runner.Run(runCtx, messages, adk.WithCheckPointID(sessionID))
 
 	var assistantContent strings.Builder
 	var assistantToolCalls []schema.ToolCall
@@ -206,20 +204,24 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 		if event.Err != nil {
 			h.reportAIError(c.Request.Context(), "chat_runner", event.Err.Error(), requestID, sessionID, "session streaming runner event")
 		}
+		var eventAssistantChunks []*schema.Message
 		if err := h.sseWriter.WriteWithObserver(c.Writer, event, func(msg *schema.Message) {
-			if msg.Role == schema.Assistant {
-				assistantContent.WriteString(msg.Content)
-				if len(msg.ToolCalls) > 0 {
-					assistantToolCalls = append(assistantToolCalls, msg.ToolCalls...)
-				}
+			if msg != nil && msg.Role == schema.Assistant {
+				eventAssistantChunks = append(eventAssistantChunks, msg)
 			}
 		}); err != nil {
 			break
+		}
+		if err := collectAssistantChunks(eventAssistantChunks, &assistantContent, &assistantToolCalls); err != nil {
+			h.reportAIError(c.Request.Context(), "chat_runner_stream", err.Error(), requestID, sessionID, "merge session streaming output")
 		}
 		c.Writer.Flush()
 	}
 
 	content := strings.TrimSpace(assistantContent.String())
+	decision.SearchQuery, decision.SearchHits = searches.Snapshot()
+	decision.KnowledgeShared = containsToolCall(assistantToolCalls, "knowledge_search")
+	decision.NeedHuman = containsToolCall(assistantToolCalls, "transfer_human")
 	h.captureUnanswered(c.Request.Context(), decision, req.Message, content, sessionID, requestID, bizCtx)
 	if content != "" || len(assistantToolCalls) > 0 {
 		decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
@@ -268,7 +270,7 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		}
 	}
 
-	history := convertHistory(req.History)
+	history := h.limitAgentHistory(c.Request.Context(), convertHistory(req.History))
 	decision, err := h.decideChat(c.Request.Context(), history, req.Question)
 	if err != nil {
 		response.InternalError(c, err.Error())
@@ -297,7 +299,9 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		return
 	}
 	_, messages := h.buildMessages(c.Request.Context(), history, req.Question, decision)
-	iter := h.runner.Run(c.Request.Context(), messages)
+	searches := &toolSearchCollector{}
+	runCtx := agenttools.WithSearchObserver(c.Request.Context(), searches.Observe)
+	iter := h.runner.Run(runCtx, messages)
 	var assistantContent strings.Builder
 	var toolCalls []schema.ToolCall
 	for {
@@ -314,6 +318,9 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 	}
 
 	answer := strings.TrimSpace(assistantContent.String())
+	decision.SearchQuery, decision.SearchHits = searches.Snapshot()
+	decision.KnowledgeShared = containsToolCall(toolCalls, "knowledge_search")
+	decision.NeedHuman = containsToolCall(toolCalls, "transfer_human")
 	h.captureUnanswered(c.Request.Context(), decision, req.Question, answer, "", requestID, bizCtx)
 	decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
 		"content_chars": len([]rune(answer)),
@@ -330,7 +337,7 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		"answer":           answer,
 		"sources":          buildSources(decision.SearchHits),
 		"matched_qa_ids":   buildMatchedQAIDs(decision.SearchHits),
-		"need_human":       containsTransferTool(toolCalls),
+		"need_human":       decision.NeedHuman,
 		"session_id":       "",
 		"request_id":       requestID,
 		"trace_id":         requestID,
@@ -348,34 +355,76 @@ func collectAgentOutput(event *adk.AgentEvent, content *strings.Builder, toolCal
 	if event == nil || event.Output == nil || event.Output.MessageOutput == nil {
 		return nil
 	}
-	consume := func(msg *schema.Message) {
-		if msg == nil || msg.Role != schema.Assistant {
-			return
-		}
-		content.WriteString(msg.Content)
-		if len(msg.ToolCalls) > 0 {
-			*toolCalls = append(*toolCalls, msg.ToolCalls...)
-		}
-	}
 	output := event.Output.MessageOutput
 	if output.Message != nil {
-		consume(output.Message)
-		return nil
+		return collectAssistantChunks([]*schema.Message{output.Message}, content, toolCalls)
 	}
 	if output.MessageStream == nil {
 		return nil
 	}
 	defer output.MessageStream.Close()
+	var chunks []*schema.Message
 	for {
 		chunk, err := output.MessageStream.Recv()
 		if errors.Is(err, io.EOF) {
-			return nil
+			return collectAssistantChunks(chunks, content, toolCalls)
 		}
 		if err != nil {
 			return err
 		}
-		consume(chunk)
+		if chunk != nil && chunk.Role == schema.Assistant {
+			chunks = append(chunks, chunk)
+		}
 	}
+}
+
+func collectAssistantChunks(chunks []*schema.Message, content *strings.Builder, toolCalls *[]schema.ToolCall) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+	message, err := schema.ConcatMessages(chunks)
+	if err != nil {
+		return err
+	}
+	if message == nil || message.Role != schema.Assistant {
+		return nil
+	}
+	content.WriteString(message.Content)
+	if len(message.ToolCalls) > 0 {
+		*toolCalls = append(*toolCalls, message.ToolCalls...)
+	}
+	return nil
+}
+
+type toolSearchCollector struct {
+	mu      sync.Mutex
+	query   string
+	hits    []rag.SearchHit
+	seenIDs map[string]struct{}
+}
+
+func (c *toolSearchCollector) Observe(query string, hits []rag.SearchHit) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.query = strings.TrimSpace(query)
+	if c.seenIDs == nil {
+		c.seenIDs = make(map[string]struct{}, len(hits))
+	}
+	for _, hit := range hits {
+		if hit.ID != "" {
+			if _, exists := c.seenIDs[hit.ID]; exists {
+				continue
+			}
+			c.seenIDs[hit.ID] = struct{}{}
+		}
+		c.hits = append(c.hits, hit)
+	}
+}
+
+func (c *toolSearchCollector) Snapshot() (string, []rag.SearchHit) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.query, append([]rag.SearchHit(nil), c.hits...)
 }
 
 func (h *ChatHandler) canHandleChat(c *gin.Context) bool {
@@ -418,7 +467,30 @@ func exceedsContextLimit(maxMessages, maxChars int, history []*schema.Message, c
 	return total > maxChars
 }
 
-func (h *ChatHandler) buildMessages(ctx context.Context, history []*schema.Message, content string, decision chatDecision) (*schema.Message, []*schema.Message) {
+const hardMaxAgentHistoryMessages = 10
+
+func (h *ChatHandler) limitAgentHistory(ctx context.Context, history []*schema.Message) []*schema.Message {
+	limit := hardMaxAgentHistoryMessages
+	if h.settings != nil {
+		configured := h.settings.ResolveAgentConfig(ctx).MaxContextMessages
+		if configured > 0 && configured < limit {
+			limit = configured
+		}
+	}
+	return latestHistoryMessages(history, limit)
+}
+
+func latestHistoryMessages(history []*schema.Message, limit int) []*schema.Message {
+	if limit <= 0 || limit > hardMaxAgentHistoryMessages {
+		limit = hardMaxAgentHistoryMessages
+	}
+	if len(history) <= limit {
+		return history
+	}
+	return history[len(history)-limit:]
+}
+
+func (h *ChatHandler) buildMessages(ctx context.Context, history []*schema.Message, content string, _ chatDecision) (*schema.Message, []*schema.Message) {
 	userMsg := schema.UserMessage(content)
 	messages := make([]*schema.Message, 0, len(history)+3)
 	if h.settings != nil {
@@ -427,35 +499,14 @@ func (h *ChatHandler) buildMessages(ctx context.Context, history []*schema.Messa
 			messages = append(messages, schema.SystemMessage(instruction))
 		}
 	}
+	messages = append(messages, schema.SystemMessage(`由你判断本轮是否需要使用工具：
+- 涉及产品功能、操作方法、账号、充值、规则、售后等需要事实依据的问题，调用 knowledge_search。追问时先结合历史把指代补全成适合检索的独立问题。
+- knowledge_search 会返回多条候选 QA。你必须比较问题相关性和答案内容，只采用能直接支持本轮回答的候选；可以综合多条，但不要因为返回了候选就默认它们都正确相关。
+- 知识库证据足够时，用自然、简短的客服口吻组织最终答复，不要暴露检索过程、分数或工具名称；证据不足时明确说明暂时没有查到，不要编造。
+- 寒暄、感谢等无需业务事实的问题可以直接回复，不必检索；用户明确要求人工客服时调用 transfer_human。
+- 你会收到最近最多 10 条历史消息。无论当前问题最终属于追问还是独立新问题，都要参考其中上一条用户问题后自行判断上下文关系；不要输出关系分类过程，也不要请求额外的意图判断层。
+- 历史对话只用于理解本轮问题和消解指代，最终只回答本轮诉求。`))
 	messages = append(messages, history...)
-	if decision.Intent != nil {
-		hint := fmt.Sprintf("意图分析结果：intent=%s need_search=%t confidence=%.2f reason=%s。请根据 need_search 决定是否调用 knowledge_search；need_search=false 时不要调用。",
-			decision.Intent.Intent, decision.Intent.NeedSearch, decision.Intent.Confidence, decision.Intent.Reason)
-		messages = append(messages, schema.SystemMessage(hint))
-	}
-	if len(decision.SearchHits) > 0 {
-		contextPrompt := "你是客服助手。请严格根据以下知识库内容回答用户问题；若知识库无法直接支持答案，不要编造。"
-		if h.settings != nil {
-			contextPrompt = h.settings.GetPromptContent(ctx, admin.PromptRAGAnswer, contextPrompt)
-		}
-		contextPrompt = strings.NewReplacer(
-			"{{context}}", rag.FormatHits(decision.SearchHits),
-			"{{query}}", content,
-		).Replace(contextPrompt)
-		messages = append(messages, schema.SystemMessage(contextPrompt))
-	}
-	if len(history) > 0 {
-		relation := "新问题"
-		if decision.QueryRelation != nil && decision.QueryRelation.IsFollowUp {
-			relation = "追问"
-		}
-		focus := fmt.Sprintf(`本轮用户问题是：%s
-上下文关系：%s。
-只回答本轮用户问题。历史对话仅用于消解指代和理解上下文，不要再次回答、复述或总结上一轮已经回答过的问题。
-如果是追问，只补充本次追问需要的新信息；如果是新问题，完全聚焦新问题。检索改写文本仅用于查找知识，不是要求回答多个问题。`, content, relation)
-		focus += "\n回答中的产品事实必须由本次检索知识直接支持；不得凭常识推断价格、优惠、期限、规则或功能。知识未提供的部分应明确说明暂无相关信息。"
-		messages = append(messages, schema.SystemMessage(focus))
-	}
 	messages = append(messages, userMsg)
 	return userMsg, messages
 }
@@ -470,226 +521,25 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		return decision, nil
 	}
 	cfg := h.settings.ResolveAgentConfig(ctx)
-	if exceedsContextLimit(cfg.MaxContextMessages, cfg.MaxContextChars, history, trimmed) {
+	if exceedsContextLimit(0, cfg.MaxContextChars, history, trimmed) {
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatContextLimit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
-		decision.addTrace("context_limit", "上下文长度检查", "blocked", "超过配置的上下文限制，直接返回默认回复", map[string]any{
+		decision.addTrace("context_limit", "上下文长度检查", "blocked", "最近 10 条上下文的字符数仍超过限制，直接返回默认回复", map[string]any{
 			"history_messages": len(history),
 			"input_chars":      len([]rune(trimmed)),
 		}, nil, nil, time.Time{})
 		return decision, nil
 	}
-	decision.addTrace("context_limit", "上下文长度检查", "finished", "未超过上下文限制", map[string]any{
+	decision.addTrace("context_limit", "上下文长度检查", "finished", "已携带最近不超过 10 条历史消息，未超过字符限制", map[string]any{
 		"history_messages": len(history),
 		"input_chars":      len([]rune(trimmed)),
 	}, nil, nil, time.Time{})
-	ruleStart := time.Now()
-	if ruleReply, needHuman, matched, err := h.applyLightRules(ctx, trimmed); err != nil {
-		decision.addTrace("light_rules", "轻量规则匹配", "error", "读取或匹配轻量规则失败", map[string]any{
-			"query": trimmed,
-		}, nil, err, ruleStart)
-		return decision, err
-	} else if matched {
-		decision.Reply = ruleReply
-		decision.NeedHuman = needHuman
-		decision.addTrace("light_rules", "轻量规则匹配", "matched", "命中轻量规则，直接返回规则回复", map[string]any{
-			"query": trimmed,
-		}, map[string]any{
-			"need_human":  needHuman,
-			"reply_chars": len([]rune(ruleReply)),
-		}, nil, ruleStart)
-		return decision, nil
-	} else {
-		decision.addTrace("light_rules", "轻量规则匹配", "finished", "未命中轻量规则，继续意图分析", map[string]any{
-			"query": trimmed,
-		}, nil, nil, ruleStart)
-	}
-
-	rewriteStart := time.Now()
-	relation := &rag.QueryRelationResult{StandaloneQuery: trimmed, Confidence: 1}
-	if h.intent != nil {
-		resolved, relationErr := h.intent.ResolveQueryRelation(ctx, history, trimmed)
-		if relationErr != nil {
-			h.reportAIError(ctx, "query_relation", relationErr.Error(), "", "", "decide chat resolve query relation")
-			decision.addTrace("query_relation", "上下文关系判断", "error", "关系判断失败，安全回退为仅使用当前问题", map[string]any{
-				"query": trimmed,
-			}, map[string]any{"search_query": trimmed}, relationErr, rewriteStart)
-		} else if resolved != nil {
-			relation = resolved
-			decision.addTrace("query_relation", "上下文关系判断", "finished", "判断当前问题是追问还是独立新问题", map[string]any{
-				"query": trimmed,
-			}, map[string]any{
-				"is_follow_up":     resolved.IsFollowUp,
-				"confidence":       resolved.Confidence,
-				"reason":           resolved.Reason,
-				"standalone_query": resolved.StandaloneQuery,
-			}, nil, rewriteStart)
-		}
-	}
-	searchQuery := strings.TrimSpace(relation.StandaloneQuery)
-	if searchQuery == "" {
-		searchQuery = trimmed
-	}
-	decision.QueryRelation = relation
-	decision.SearchQuery = searchQuery
-
-	intentStart := time.Now()
-	intentRes, err := h.analyzeIntent(ctx, searchQuery)
-	if err != nil {
-		h.reportAIError(ctx, "intent_analyzer", err.Error(), "", "", "decide chat analyze")
-		decision.addTrace("intent_analyzer", "意图分析", "error", "意图分析失败，继续尝试检索", map[string]any{
-			"query": searchQuery,
-		}, nil, err, intentStart)
-	} else {
-		decision.Intent = intentRes
-		output := map[string]any{"available": intentRes != nil}
-		if intentRes != nil {
-			output = map[string]any{
-				"intent":      intentRes.Intent,
-				"need_search": intentRes.NeedSearch,
-				"confidence":  intentRes.Confidence,
-				"reason":      intentRes.Reason,
-			}
-		}
-		decision.addTrace("intent_analyzer", "意图分析", "finished", "完成用户问题意图判断", map[string]any{
-			"query": searchQuery,
-		}, output, nil, intentStart)
-	}
-	if decision.Intent != nil && !decision.Intent.NeedSearch {
-		if decision.Intent.SearchSuggested {
-			decision.Unanswered = true
-			decision.UnansweredReason = unanswered.ReasonLowConfidence
-		}
-		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatOutOfScope, cfg.DefaultReply)
-		decision.UsedDefaultReply = true
-		decision.addTrace("route", "路由决策", "finished", "意图分析认为不需要检索，使用默认回复", nil, map[string]any{
-			"route": "default_reply",
-		}, nil, time.Time{})
-		return decision, nil
-	}
-
-	searchStart := time.Now()
-	hits, err := h.searchKnowledge(ctx, searchQuery)
-	if err != nil {
-		h.reportAIError(ctx, "knowledge_search", err.Error(), "", "", "decide chat presearch")
-		decision.addTrace("knowledge_search", "知识库检索", "error", "检索失败，继续交给后续流程处理", map[string]any{
-			"query": searchQuery,
-		}, nil, err, searchStart)
-		return decision, nil
-	}
-	decision.SearchHits = hits
-	decision.addTrace("knowledge_search", "知识库检索", "finished", "完成 QA 知识库检索", map[string]any{
-		"query": searchQuery,
+	decision.addTrace("agent_delegation", "Agent 自主决策", "finished", "正常请求统一交给 Agent，由模型自行决定是否调用知识库或转人工工具", map[string]any{
+		"query": trimmed,
 	}, map[string]any{
-		"hit_count": len(hits),
-		"sources":   buildSources(hits),
-	}, nil, searchStart)
-	if len(hits) == 0 {
-		decision.Unanswered = true
-		decision.UnansweredReason = unanswered.ReasonNoHit
-		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
-		decision.UsedDefaultReply = true
-		decision.addTrace("route", "路由决策", "finished", "知识库无命中，使用无命中默认回复", nil, map[string]any{
-			"route": "no_hit_reply",
-		}, nil, time.Time{})
-		return decision, nil
-	}
-	decision.KnowledgeShared = true
-	hitLevel := evaluateHitLevel(searchQuery, hits)
-	decision.addTrace("hit_evaluation", "命中质量评估", "finished", "根据问题与首条命中相似度选择回复路径", nil, map[string]any{
-		"level":        hitLevel,
-		"top_question": hits[0].Question,
-		"top_score":    hits[0].Score,
+		"route": "model_driven_agent",
 	}, nil, time.Time{})
-	switch hitLevel {
-	case "high":
-		if decision.QueryRelation != nil && decision.QueryRelation.IsFollowUp {
-			decision.addTrace("route", "路由决策", "finished", "追问命中知识库，交给模型仅生成本轮增量答复", nil, map[string]any{
-				"route": "agent_follow_up_with_rag_context",
-			}, nil, time.Time{})
-			break
-		}
-		decision.Reply = strings.TrimSpace(hits[0].Answer)
-		if decision.Reply == "" {
-			decision.Unanswered = true
-			decision.UnansweredReason = unanswered.ReasonEmptyQAAnswer
-			decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
-			decision.UsedDefaultReply = true
-			decision.addTrace("route", "路由决策", "finished", "高置信命中没有答案，使用默认回复", nil, map[string]any{
-				"route": "empty_answer_default_reply",
-			}, nil, time.Time{})
-		} else {
-			decision.addTrace("route", "路由决策", "finished", "高置信命中，直接返回标准答案", nil, map[string]any{
-				"route": "direct_qa_answer",
-			}, nil, time.Time{})
-		}
-	case "mid":
-		// Let the model answer based on retrieved QA context.
-		decision.addTrace("route", "路由决策", "finished", "中等命中，交给模型基于检索上下文回答", nil, map[string]any{
-			"route": "agent_with_rag_context",
-		}, nil, time.Time{})
-	default:
-		decision.Unanswered = true
-		decision.UnansweredReason = unanswered.ReasonLowConfidence
-		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatNoHit, cfg.DefaultReply)
-		decision.UsedDefaultReply = true
-		decision.addTrace("route", "路由决策", "finished", "低置信命中，使用无命中默认回复", nil, map[string]any{
-			"route": "low_confidence_reply",
-		}, nil, time.Time{})
-	}
 	return decision, nil
-}
-
-func (h *ChatHandler) applyLightRules(ctx context.Context, content string) (reply string, needHuman bool, matched bool, err error) {
-	if h.settings == nil {
-		return "", false, false, nil
-	}
-	rules, err := h.settings.ListChatLightRules(ctx, true)
-	if err != nil {
-		return "", false, false, err
-	}
-	for _, rule := range rules {
-		if !matchLightRule(rule, content) {
-			continue
-		}
-		switch rule.ActionType {
-		case admin.ChatRuleActionReply:
-			reply = strings.TrimSpace(rule.ResponseText)
-			if reply == "" {
-				reply = h.settings.GetPromptContent(ctx, admin.PromptChatSmalltalk, "你好，你可以继续咨询订单、退款、配送、发票、售后等问题。")
-			}
-			return reply, false, true, nil
-		case admin.ChatRuleActionHandoff:
-			reply = strings.TrimSpace(rule.ResponseText)
-			if reply == "" {
-				reply = h.settings.GetPromptContent(ctx, admin.PromptChatHandoff, "已为你记录人工客服诉求，请稍候。")
-			}
-			return reply, true, true, nil
-		case admin.ChatRuleActionReject:
-			reply = strings.TrimSpace(rule.ResponseText)
-			if reply == "" {
-				reply = h.settings.GetPromptContent(ctx, admin.PromptChatOutOfScope, "当前我主要支持客服业务问题。")
-			}
-			return reply, false, true, nil
-		case admin.ChatRuleActionContinueSearch:
-			return "", false, false, nil
-		}
-	}
-	return "", false, false, nil
-}
-
-func (h *ChatHandler) analyzeIntent(ctx context.Context, content string) (*rag.IntentResult, error) {
-	if h.intent == nil {
-		return nil, nil
-	}
-	return h.intent.Analyze(ctx, content)
-}
-
-func (h *ChatHandler) searchKnowledge(ctx context.Context, query string) ([]rag.SearchHit, error) {
-	if h.ragService == nil {
-		return nil, nil
-	}
-	return h.ragService.SearchHits(ctx, query)
 }
 
 func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecision, question, finalAnswer, sessionID, requestID string, biz *middleware.BizContext) {
@@ -698,7 +548,7 @@ func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecisi
 	}
 	reason := decision.UnansweredReason
 	if !decision.Unanswered {
-		if len(decision.SearchHits) == 0 {
+		if len(decision.SearchHits) == 0 && !decision.KnowledgeShared {
 			return
 		}
 		switch {
@@ -711,10 +561,6 @@ func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecisi
 		}
 	}
 	input := unanswered.CaptureInput{Question: question, SearchQuery: decision.SearchQuery, Reason: reason, FinalAnswer: finalAnswer, SessionID: sessionID, RequestID: requestID, HitCount: len(decision.SearchHits)}
-	if decision.Intent != nil {
-		input.Intent = decision.Intent.Intent
-		input.IntentConfidence = decision.Intent.Confidence
-	}
 	if len(decision.SearchHits) > 0 {
 		input.TopScore = decision.SearchHits[0].Score
 	}
@@ -767,9 +613,10 @@ func convertHistory(history []HistoryInput) []*schema.Message {
 	return out
 }
 
-func containsTransferTool(toolCalls []schema.ToolCall) bool {
+func containsToolCall(toolCalls []schema.ToolCall, toolName string) bool {
+	toolName = strings.ToLower(strings.TrimSpace(toolName))
 	for _, call := range toolCalls {
-		if strings.Contains(strings.ToLower(call.Function.Name), "transfer") {
+		if strings.EqualFold(strings.TrimSpace(call.Function.Name), toolName) {
 			return true
 		}
 	}
@@ -811,80 +658,10 @@ func persistenceContext(ctx context.Context) (context.Context, context.CancelFun
 	return context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 }
 
-func matchLightRule(rule admin.ChatLightRuleView, content string) bool {
-	normalizedContent := normalizeRuleText(content)
-	pattern := strings.TrimSpace(rule.Pattern)
-	switch rule.MatchType {
-	case admin.ChatRuleMatchExact:
-		return normalizedContent == normalizeRuleText(pattern)
-	case admin.ChatRuleMatchContains:
-		return strings.Contains(normalizedContent, normalizeRuleText(pattern))
-	case admin.ChatRuleMatchRegex:
-		re, err := regexp.Compile(pattern)
-		return err == nil && re.MatchString(content)
-	case admin.ChatRuleMatchKeywords:
-		for _, keyword := range strings.Split(pattern, ",") {
-			if strings.Contains(normalizedContent, normalizeRuleText(keyword)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func normalizeRuleText(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	replacer := strings.NewReplacer(" ", "", "，", "", ",", "", "。", "", "！", "", "!", "", "？", "", "?", "", "\n", "", "\r", "", "\t", "")
 	return replacer.Replace(value)
-}
-
-func evaluateHitLevel(query string, hits []rag.SearchHit) string {
-	if len(hits) == 0 {
-		return "low"
-	}
-	top := normalizeRuleText(hits[0].Question)
-	q := normalizeRuleText(query)
-	if top == q {
-		return "high"
-	}
-	if len(q) >= 4 && (strings.Contains(top, q) || strings.Contains(q, top)) {
-		return "high"
-	}
-	if overlapRatio(q, top) >= 0.6 {
-		return "high"
-	}
-	if overlapRatio(q, top) >= 0.25 {
-		return "mid"
-	}
-	return "low"
-}
-
-func overlapRatio(a, b string) float64 {
-	if a == "" || b == "" {
-		return 0
-	}
-	set := make(map[rune]struct{})
-	for _, r := range a {
-		set[r] = struct{}{}
-	}
-	var overlap int
-	seen := make(map[rune]struct{})
-	for _, r := range b {
-		if _, ok := set[r]; ok {
-			if _, dup := seen[r]; !dup {
-				overlap++
-				seen[r] = struct{}{}
-			}
-		}
-	}
-	denom := len([]rune(a))
-	if len([]rune(b)) < denom {
-		denom = len([]rune(b))
-	}
-	if denom == 0 {
-		return 0
-	}
-	return float64(overlap) / float64(denom)
 }
 
 func logChat(c *gin.Context, event string, start time.Time, bizCtx *middleware.BizContext, sessionID, clientMessageID string) {

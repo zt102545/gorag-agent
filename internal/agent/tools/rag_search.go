@@ -15,12 +15,33 @@ type SearchInput struct {
 	Query string `json:"query" jsonschema:"description=用户问题或检索关键词"`
 }
 
+type searchObserverKey struct{}
+
+// WithSearchObserver records the result of the Agent's actual tool call for
+// response metadata and tracing without issuing a second retrieval.
+func WithSearchObserver(ctx context.Context, observer func(string, []rag.SearchHit)) context.Context {
+	if observer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, searchObserverKey{}, observer)
+}
+
 func NewRAGSearchTool(service *rag.Service) (tool.InvokableTool, error) {
-	return utils.InferTool("knowledge_search", "检索 QA 知识库，返回与用户问题相似的问答对（含标准答案）", func(ctx context.Context, input *SearchInput) (string, error) {
+	return utils.InferTool("knowledge_search", "检索 QA 知识库并返回多条候选问答（含标准答案）；请自行比较相关性后组织最终回复", func(ctx context.Context, input *SearchInput) (string, error) {
 		if input.Query == "" {
 			return "", fmt.Errorf("query is required")
 		}
-		return service.Search(ctx, input.Query)
+		hits, err := service.SearchHits(ctx, input.Query)
+		if err != nil {
+			return "", err
+		}
+		if observer, ok := ctx.Value(searchObserverKey{}).(func(string, []rag.SearchHit)); ok {
+			observer(input.Query, hits)
+		}
+		if len(hits) == 0 {
+			return "未找到相关 QA 知识库内容。", nil
+		}
+		return rag.FormatHits(hits), nil
 	})
 }
 

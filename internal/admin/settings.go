@@ -93,7 +93,7 @@ func (s *SettingsService) seedAgentConfig(ctx context.Context) error {
 		Key:                AgentConfigCustomerService,
 		DefaultReply:       defaultAgentFallbackReply,
 		MaxContextChars:    12000,
-		MaxContextMessages: 20,
+		MaxContextMessages: 10,
 		UpdatedAt:          time.Now(),
 	}).Error
 }
@@ -415,11 +415,15 @@ func (s *SettingsService) GetAgentConfig(ctx context.Context) (*AgentConfigView,
 	if err := s.db.WithContext(ctx).Where("config_key = ?", AgentConfigCustomerService).First(&row).Error; err != nil {
 		return nil, err
 	}
+	maxContextMessages := row.MaxContextMessages
+	if maxContextMessages <= 0 || maxContextMessages > 10 {
+		maxContextMessages = 10
+	}
 	return &AgentConfigView{
 		Key:                row.Key,
 		DefaultReply:       row.DefaultReply,
 		MaxContextChars:    row.MaxContextChars,
-		MaxContextMessages: row.MaxContextMessages,
+		MaxContextMessages: maxContextMessages,
 		UpdatedAt:          row.UpdatedAt,
 	}, nil
 }
@@ -439,7 +443,7 @@ func (s *SettingsService) UpdateAgentConfig(ctx context.Context, req UpdateAgent
 		row.MaxContextChars = *req.MaxContextChars
 	}
 	if req.MaxContextMessages != nil && *req.MaxContextMessages > 0 {
-		row.MaxContextMessages = *req.MaxContextMessages
+		row.MaxContextMessages = min(*req.MaxContextMessages, 10)
 	}
 	if row.DefaultReply == "" {
 		row.DefaultReply = defaultAgentFallbackReply
@@ -448,7 +452,7 @@ func (s *SettingsService) UpdateAgentConfig(ctx context.Context, req UpdateAgent
 		row.MaxContextChars = 12000
 	}
 	if row.MaxContextMessages <= 0 {
-		row.MaxContextMessages = 20
+		row.MaxContextMessages = 10
 	}
 	row.UpdatedAt = time.Now()
 	if err := s.db.WithContext(ctx).Save(&row).Error; err != nil {
@@ -507,7 +511,7 @@ func (s *SettingsService) ResolveAgentConfig(ctx context.Context) AgentConfigVie
 			Key:                AgentConfigCustomerService,
 			DefaultReply:       defaultAgentFallbackReply,
 			MaxContextChars:    12000,
-			MaxContextMessages: 20,
+			MaxContextMessages: 10,
 		}
 	}
 	return *view
