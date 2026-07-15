@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -73,6 +75,7 @@ type chatDecision struct {
 	UsedDefaultReply bool
 	KnowledgeShared  bool
 	Intent           *rag.IntentResult
+	QueryRelation    *rag.QueryRelationResult
 	SearchQuery      string
 	SearchHits       []rag.SearchHit
 	Trace            []chatTraceStep
@@ -305,14 +308,8 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		if event.Err != nil {
 			h.reportAIError(c.Request.Context(), "chat_runner", event.Err.Error(), requestID, "", "stateless ask runner event")
 		}
-		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Message != nil {
-			msg := event.Output.MessageOutput.Message
-			if msg.Role == schema.Assistant {
-				assistantContent.WriteString(msg.Content)
-				if len(msg.ToolCalls) > 0 {
-					toolCalls = append(toolCalls, msg.ToolCalls...)
-				}
-			}
+		if err := collectAgentOutput(event, &assistantContent, &toolCalls); err != nil {
+			h.reportAIError(c.Request.Context(), "chat_runner_stream", err.Error(), requestID, "", "stateless ask consume runner stream")
 		}
 	}
 
@@ -345,6 +342,40 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 		"tool_calls":       toolCalls,
 		"knowledge_shared": decision.KnowledgeShared,
 	})
+}
+
+func collectAgentOutput(event *adk.AgentEvent, content *strings.Builder, toolCalls *[]schema.ToolCall) error {
+	if event == nil || event.Output == nil || event.Output.MessageOutput == nil {
+		return nil
+	}
+	consume := func(msg *schema.Message) {
+		if msg == nil || msg.Role != schema.Assistant {
+			return
+		}
+		content.WriteString(msg.Content)
+		if len(msg.ToolCalls) > 0 {
+			*toolCalls = append(*toolCalls, msg.ToolCalls...)
+		}
+	}
+	output := event.Output.MessageOutput
+	if output.Message != nil {
+		consume(output.Message)
+		return nil
+	}
+	if output.MessageStream == nil {
+		return nil
+	}
+	defer output.MessageStream.Close()
+	for {
+		chunk, err := output.MessageStream.Recv()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		consume(chunk)
+	}
 }
 
 func (h *ChatHandler) canHandleChat(c *gin.Context) bool {
@@ -409,9 +440,21 @@ func (h *ChatHandler) buildMessages(ctx context.Context, history []*schema.Messa
 		}
 		contextPrompt = strings.NewReplacer(
 			"{{context}}", rag.FormatHits(decision.SearchHits),
-			"{{query}}", decision.SearchQuery,
+			"{{query}}", content,
 		).Replace(contextPrompt)
 		messages = append(messages, schema.SystemMessage(contextPrompt))
+	}
+	if len(history) > 0 {
+		relation := "新问题"
+		if decision.QueryRelation != nil && decision.QueryRelation.IsFollowUp {
+			relation = "追问"
+		}
+		focus := fmt.Sprintf(`本轮用户问题是：%s
+上下文关系：%s。
+只回答本轮用户问题。历史对话仅用于消解指代和理解上下文，不要再次回答、复述或总结上一轮已经回答过的问题。
+如果是追问，只补充本次追问需要的新信息；如果是新问题，完全聚焦新问题。检索改写文本仅用于查找知识，不是要求回答多个问题。`, content, relation)
+		focus += "\n回答中的产品事实必须由本次检索知识直接支持；不得凭常识推断价格、优惠、期限、规则或功能。知识未提供的部分应明确说明暂无相关信息。"
+		messages = append(messages, schema.SystemMessage(focus))
 	}
 	messages = append(messages, userMsg)
 	return userMsg, messages
@@ -462,12 +505,40 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		}, nil, nil, ruleStart)
 	}
 
+	rewriteStart := time.Now()
+	relation := &rag.QueryRelationResult{StandaloneQuery: trimmed, Confidence: 1}
+	if h.intent != nil {
+		resolved, relationErr := h.intent.ResolveQueryRelation(ctx, history, trimmed)
+		if relationErr != nil {
+			h.reportAIError(ctx, "query_relation", relationErr.Error(), "", "", "decide chat resolve query relation")
+			decision.addTrace("query_relation", "上下文关系判断", "error", "关系判断失败，安全回退为仅使用当前问题", map[string]any{
+				"query": trimmed,
+			}, map[string]any{"search_query": trimmed}, relationErr, rewriteStart)
+		} else if resolved != nil {
+			relation = resolved
+			decision.addTrace("query_relation", "上下文关系判断", "finished", "判断当前问题是追问还是独立新问题", map[string]any{
+				"query": trimmed,
+			}, map[string]any{
+				"is_follow_up":     resolved.IsFollowUp,
+				"confidence":       resolved.Confidence,
+				"reason":           resolved.Reason,
+				"standalone_query": resolved.StandaloneQuery,
+			}, nil, rewriteStart)
+		}
+	}
+	searchQuery := strings.TrimSpace(relation.StandaloneQuery)
+	if searchQuery == "" {
+		searchQuery = trimmed
+	}
+	decision.QueryRelation = relation
+	decision.SearchQuery = searchQuery
+
 	intentStart := time.Now()
-	intentRes, err := h.analyzeIntent(ctx, trimmed)
+	intentRes, err := h.analyzeIntent(ctx, searchQuery)
 	if err != nil {
 		h.reportAIError(ctx, "intent_analyzer", err.Error(), "", "", "decide chat analyze")
 		decision.addTrace("intent_analyzer", "意图分析", "error", "意图分析失败，继续尝试检索", map[string]any{
-			"query": trimmed,
+			"query": searchQuery,
 		}, nil, err, intentStart)
 	} else {
 		decision.Intent = intentRes
@@ -481,7 +552,7 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 			}
 		}
 		decision.addTrace("intent_analyzer", "意图分析", "finished", "完成用户问题意图判断", map[string]any{
-			"query": trimmed,
+			"query": searchQuery,
 		}, output, nil, intentStart)
 	}
 	if decision.Intent != nil && !decision.Intent.NeedSearch {
@@ -497,18 +568,6 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 		return decision, nil
 	}
 
-	rewriteStart := time.Now()
-	searchQuery := rag.RewriteQuery(history, trimmed)
-	if searchQuery == "" {
-		searchQuery = trimmed
-	}
-	decision.SearchQuery = searchQuery
-	decision.addTrace("query_rewrite", "检索 Query 改写", "finished", "生成知识库检索语句", map[string]any{
-		"query": trimmed,
-	}, map[string]any{
-		"search_query": searchQuery,
-		"rewritten":    searchQuery != trimmed,
-	}, nil, rewriteStart)
 	searchStart := time.Now()
 	hits, err := h.searchKnowledge(ctx, searchQuery)
 	if err != nil {
@@ -544,6 +603,12 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 	}, nil, time.Time{})
 	switch hitLevel {
 	case "high":
+		if decision.QueryRelation != nil && decision.QueryRelation.IsFollowUp {
+			decision.addTrace("route", "路由决策", "finished", "追问命中知识库，交给模型仅生成本轮增量答复", nil, map[string]any{
+				"route": "agent_follow_up_with_rag_context",
+			}, nil, time.Time{})
+			break
+		}
 		decision.Reply = strings.TrimSpace(hits[0].Answer)
 		if decision.Reply == "" {
 			decision.Unanswered = true
