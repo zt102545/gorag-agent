@@ -28,22 +28,40 @@ function isHttpUrl(value: string) {
   }
 }
 
-function escapeText(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
 function looksLikeHtml(value: string) {
   return /<\/?[a-z][\s\S]*>/i.test(value)
 }
 
+const imageUrlPattern = /https?:\/\/[^\s<>"']+\.(?:avif|gif|jpe?g|png|svg|webp)(?:\?[^\s<>"']*)?(?:#[^\s<>"']*)?/gi
+
+function enrichText(value: string, doc: Document) {
+  const fragment = doc.createDocumentFragment()
+  let cursor = 0
+  imageUrlPattern.lastIndex = 0
+  for (const match of value.matchAll(imageUrlPattern)) {
+    const index = match.index ?? 0
+    if (index > cursor) fragment.appendChild(doc.createTextNode(value.slice(cursor, index)))
+    const src = match[0]
+    const link = doc.createElement('a')
+    link.setAttribute('href', src)
+    link.setAttribute('target', '_blank')
+    link.setAttribute('rel', 'noopener noreferrer')
+    const image = doc.createElement('img')
+    image.setAttribute('src', src)
+    image.setAttribute('alt', '客服图片')
+    image.setAttribute('loading', 'lazy')
+    image.setAttribute('decoding', 'async')
+    link.appendChild(image)
+    fragment.appendChild(link)
+    cursor = index + src.length
+  }
+  if (cursor < value.length) fragment.appendChild(doc.createTextNode(value.slice(cursor)))
+  return fragment
+}
+
 function sanitizeNode(node: Node, doc: Document): Node | null {
   if (node.nodeType === Node.TEXT_NODE) {
-    return doc.createTextNode(node.textContent || '')
+    return enrichText(node.textContent || '', doc)
   }
   if (node.nodeType !== Node.ELEMENT_NODE) return null
 
@@ -84,7 +102,9 @@ function sanitizeNode(node: Node, doc: Document): Node | null {
 export function sanitizeRichText(value: string) {
   const raw = value || ''
   if (!looksLikeHtml(raw)) {
-    return escapeText(raw).replace(/\r?\n/g, '<br>')
+    const out = document.implementation.createHTMLDocument('')
+    out.body.appendChild(enrichText(raw, out))
+    return out.body.innerHTML.replace(/\r?\n/g, '<br>')
   }
 
   const parser = new DOMParser()

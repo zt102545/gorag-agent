@@ -91,9 +91,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	ragService.SetKnowledgeBaseCreatedAtLoader(qaService.KnowledgeBaseCreatedAt)
 
 	instruction := runtime.GetPromptContent(ctx, admin.PromptAgentInstruction, agent.CustomerServiceInstruction)
-	customerAgent, err := agent.NewCustomerServiceAgent(ctx, chatModel, ragService, instruction, func(ctx context.Context) string {
-		return runtime.GetPromptContent(ctx, admin.PromptChatHandoff, "")
-	})
+	customerAgent, err := agent.NewCustomerServiceAgent(ctx, chatModel, ragService, instruction)
 	if err != nil {
 		_ = vs.Close()
 		_ = redisClient.Close()

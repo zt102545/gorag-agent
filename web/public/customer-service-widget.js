@@ -5,12 +5,26 @@
   const esc = value => { const node=document.createElement('div'); node.textContent=String(value??''); return node.innerHTML }
   const richTags = new Set(['A','B','BLOCKQUOTE','BR','CODE','DIV','EM','I','IMG','LI','OL','P','PRE','S','SPAN','STRONG','U','UL'])
   const httpUrl = value => { try { const url=new URL(value); return url.protocol==='http:'||url.protocol==='https:' } catch { return false } }
+  const imageUrlPattern = /https?:\/\/[^\s<>"']+\.(?:avif|gif|jpe?g|png|svg|webp)(?:\?[^\s<>"']*)?(?:#[^\s<>"']*)?/gi
+  const enrichText = (value,output) => {
+    const fragment=output.createDocumentFragment(),raw=String(value??'');let cursor=0
+    imageUrlPattern.lastIndex=0
+    for(const match of raw.matchAll(imageUrlPattern)){
+      if(match.index>cursor)fragment.appendChild(output.createTextNode(raw.slice(cursor,match.index)))
+      const src=match[0],link=output.createElement('a'),img=output.createElement('img')
+      link.setAttribute('href',src);link.setAttribute('target','_blank');link.setAttribute('rel','noopener noreferrer')
+      img.setAttribute('src',src);img.setAttribute('alt','客服图片');img.setAttribute('loading','lazy');img.setAttribute('decoding','async')
+      link.appendChild(img);fragment.appendChild(link);cursor=match.index+src.length
+    }
+    if(cursor<raw.length)fragment.appendChild(output.createTextNode(raw.slice(cursor)))
+    return fragment
+  }
   const sanitizeRichText = value => {
-    const raw=String(value??'')
-    if(!/<\/?[a-z][\s\S]*>/i.test(raw))return esc(raw).replace(/\r?\n/g,'<br>')
-    const source=new DOMParser().parseFromString(raw,'text/html'),output=document.implementation.createHTMLDocument('')
+    const raw=String(value??''),output=document.implementation.createHTMLDocument('')
+    if(!/<\/?[a-z][\s\S]*>/i.test(raw)){output.body.appendChild(enrichText(raw,output));return output.body.innerHTML.replace(/\r?\n/g,'<br>')}
+    const source=new DOMParser().parseFromString(raw,'text/html')
     const clean=node=>{
-      if(node.nodeType===Node.TEXT_NODE)return output.createTextNode(node.textContent||'')
+      if(node.nodeType===Node.TEXT_NODE)return enrichText(node.textContent||'',output)
       if(node.nodeType!==Node.ELEMENT_NODE)return null
       const tag=node.tagName
       if(!richTags.has(tag)){const fragment=output.createDocumentFragment();node.childNodes.forEach(child=>{const item=clean(child);if(item)fragment.appendChild(item)});return fragment}
