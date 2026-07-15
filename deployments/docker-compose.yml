@@ -2,7 +2,8 @@ services:
   # Redis Stack：当 vector_store.provider=redissearch 时，兼作向量库；
   # 无论向量库选什么，都承担分类队列与 HITL checkpoint。
   redis:
-    image: redis/redis-stack-server:latest
+    # Redis 7.4.7 / RediSearch 2.10.20。使用 digest 避免 latest 漂移。
+    image: redis/redis-stack-server@sha256:798ab84d9f266936b034ab11c4d04a2b8e4b441884c5aa7d17ac951eefdf742a
     ports:
       - "6379:6379"
     volumes:

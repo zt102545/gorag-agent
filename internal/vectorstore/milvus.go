@@ -152,6 +152,10 @@ func (s *MilvusStore) Delete(ctx context.Context, id string) error {
 	return s.client.Delete(ctx, s.collection, "", expr)
 }
 
+func (s *MilvusStore) SearchText(context.Context, string, int) ([]Record, error) {
+	return nil, ErrTextSearchUnsupported
+}
+
 func (s *MilvusStore) Search(ctx context.Context, queryVector []float32, topK int) ([]Record, error) {
 	if topK <= 0 {
 		topK = 3
