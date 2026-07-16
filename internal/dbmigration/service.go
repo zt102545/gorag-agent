@@ -1,4 +1,4 @@
-package dbmigration
+﻿package dbmigration
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	appdb "github.com/yourorg/agent_customer_service/internal/db"
+	appdb "github.com/gorag-ai/gorag/internal/db"
 )
 
 const DefaultBatchSize = 500
@@ -76,9 +76,7 @@ func New(source, target *gorm.DB) *Service {
 			migrateTable[appdb.AIErrorLog],
 			migrateTable[appdb.Session],
 			migrateTable[appdb.Message],
-			migrateTable[appdb.WeComArchiveConfig],
-			migrateTable[appdb.WeComMessage],
-			migrateTable[appdb.WeComAnalysisRun],
+
 		},
 	}
 }

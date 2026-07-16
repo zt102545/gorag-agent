@@ -1,11 +1,11 @@
-package settingsapp
+﻿package settingsapp
 
 import (
 	"context"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/db"
+	"github.com/gorag-ai/gorag/internal/admin"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/db"
 )
 
 type Service struct {

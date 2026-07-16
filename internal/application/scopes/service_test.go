@@ -1,4 +1,4 @@
-package scopes
+﻿package scopes
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/yourorg/agent_customer_service/internal/appscope"
-	"github.com/yourorg/agent_customer_service/internal/db"
+	"github.com/gorag-ai/gorag/internal/appscope"
+	"github.com/gorag-ai/gorag/internal/db"
 )
 
 func openTestDB(t *testing.T) *gorm.DB {
@@ -76,7 +76,7 @@ func TestPromptGroupCopyAndDeleteBindingGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := NewService(gdb, nil)
-	copy, err := service.CopyPromptGroup(ctx, appscope.DefaultPromptGroupID, CopyRequest{Name: "渠道 A"})
+	copy, err := service.CopyPromptGroup(ctx, appscope.DefaultPromptGroupID, CopyRequest{Name: "娓犻亾 A"})
 	if err != nil {
 		t.Fatal(err)
 	}

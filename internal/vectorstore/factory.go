@@ -1,4 +1,4 @@
-package vectorstore
+﻿package vectorstore
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 // New creates a vector Store from vector_store.provider.

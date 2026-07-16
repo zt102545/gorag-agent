@@ -1,4 +1,4 @@
-package qa
+﻿package qa
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/yourorg/agent_customer_service/internal/db"
+	"github.com/gorag-ai/gorag/internal/db"
 )
 
 type SQLMetaStore struct {

@@ -1,10 +1,10 @@
-package knowledgeapp
+﻿package knowledgeapp
 
 import (
 	"context"
 	"io"
 
-	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
+	"github.com/gorag-ai/gorag/internal/knowledge/qa"
 )
 
 type Service struct {

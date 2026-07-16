@@ -1,4 +1,4 @@
-package rag
+﻿package rag
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 	"github.com/cloudwego/eino/components/embedding"
 
-	"github.com/yourorg/agent_customer_service/internal/vectorstore"
+	"github.com/gorag-ai/gorag/internal/vectorstore"
 )
 
 type Service struct {
@@ -54,7 +54,7 @@ func (s *Service) Search(ctx context.Context, query string) (string, error) {
 		return "", err
 	}
 	if len(hits) == 0 {
-		return "未找到相关 QA 知识库内容。", nil
+		return "鏈壘鍒扮浉鍏?QA 鐭ヨ瘑搴撳唴瀹广€?, nil
 	}
 	return FormatHits(hits), nil
 }
@@ -323,20 +323,20 @@ func FormatHits(hits []SearchHit) string {
 
 func FormatHitsAt(hits []SearchHit, now time.Time) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("当前时间: %s\n\n", now.Format(time.RFC3339)))
+	builder.WriteString(fmt.Sprintf("褰撳墠鏃堕棿: %s\n\n", now.Format(time.RFC3339)))
 	for i, rec := range hits {
 		builder.WriteString(fmt.Sprintf("[%d]", i+1))
 		if rec.Category != "" {
-			builder.WriteString(fmt.Sprintf(" 分类: %s", rec.Category))
+			builder.WriteString(fmt.Sprintf(" 鍒嗙被: %s", rec.Category))
 		}
 		if len(rec.Tags) > 0 {
-			builder.WriteString(fmt.Sprintf(" 标签: %s", strings.Join(rec.Tags, ", ")))
+			builder.WriteString(fmt.Sprintf(" 鏍囩: %s", strings.Join(rec.Tags, ", ")))
 		}
 		builder.WriteString("\n")
 		builder.WriteString(fmt.Sprintf("Q: %s\n", rec.Question))
 		builder.WriteString(fmt.Sprintf("A: %s\n", rec.Answer))
 		if rec.CreatedAt != nil && !rec.CreatedAt.IsZero() {
-			builder.WriteString(fmt.Sprintf("QA入库时间: %s\n", rec.CreatedAt.Format(time.RFC3339)))
+			builder.WriteString(fmt.Sprintf("QA鍏ュ簱鏃堕棿: %s\n", rec.CreatedAt.Format(time.RFC3339)))
 		}
 		if rec.Score != 0 {
 			builder.WriteString(fmt.Sprintf("Score: %.4f\n", rec.Score))

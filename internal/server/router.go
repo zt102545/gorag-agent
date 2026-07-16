@@ -1,12 +1,12 @@
-package server
+﻿package server
 
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/yourorg/agent_customer_service/internal/auth"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/server/handler"
-	"github.com/yourorg/agent_customer_service/internal/server/middleware"
+	"github.com/gorag-ai/gorag/internal/auth"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/server/handler"
+	"github.com/gorag-ai/gorag/internal/server/middleware"
 )
 
 type Deps struct {
@@ -23,7 +23,7 @@ type Deps struct {
 	AIErrorHandler      *handler.AIErrorHandler
 	UnansweredHandler   *handler.UnansweredHandler
 	ScopeHandler        *handler.ScopeHandler
-	WeComHandler        *handler.WeComHandler
+
 	PublicLimiter       *middleware.PublicIPLimiter
 }
 
@@ -67,23 +67,6 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		{
 			authed.GET("/auth/me", deps.AuthHandler.Me)
 
-			wecomRead := authed.Group("/wecom", middleware.RequireRole(auth.RoleViewer))
-			{
-				wecomRead.GET("/config", deps.WeComHandler.GetConfig)
-				wecomRead.GET("/permit-users", deps.WeComHandler.PermitUsers)
-				wecomRead.GET("/messages", deps.WeComHandler.Messages)
-				wecomRead.GET("/conversations", deps.WeComHandler.Conversations)
-				wecomRead.GET("/conversations/:id/messages", deps.WeComHandler.ConversationMessages)
-				wecomRead.GET("/analysis-runs", deps.WeComHandler.Runs)
-			}
-			wecomWrite := authed.Group("/wecom", middleware.RequireRole(auth.RoleAdmin))
-			{
-				wecomWrite.PUT("/config", deps.WeComHandler.SaveConfig)
-				wecomWrite.POST("/test", deps.WeComHandler.Test)
-				wecomWrite.POST("/sync", deps.WeComHandler.Sync)
-				wecomWrite.POST("/analyze", deps.WeComHandler.Analyze)
-			}
-
 			qaRead := authed.Group("/knowledge/qa", middleware.RequireRole(auth.RoleViewer))
 			{
 				qaRead.GET("", deps.KnowledgeHandler.List)
@@ -118,7 +101,7 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 				unansweredWrite.DELETE("/:id", deps.UnansweredHandler.Delete)
 			}
 
-			// GM 测试客服（与 Biz 共用同一套对话能力，JWT 鉴权）
+			// GM 娴嬭瘯瀹㈡湇锛堜笌 Biz 鍏辩敤鍚屼竴濂楀璇濊兘鍔涳紝JWT 閴存潈锛?
 			playground := authed.Group("/playground", middleware.RequireRole(auth.RoleViewer))
 			{
 				playground.POST("/sessions", deps.SessionHandler.Create)
@@ -223,17 +206,6 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 		gm.PUT("/unanswered-questions/:id", deps.UnansweredHandler.GMUpdate)
 		gm.POST("/unanswered-questions/:id/convert", deps.UnansweredHandler.GMConvert)
 		gm.DELETE("/unanswered-questions/:id", deps.UnansweredHandler.GMDelete)
-		gm.GET("/wecom/config", deps.WeComHandler.GMGetConfig)
-		gm.GET("/wecom/permit-users", deps.WeComHandler.GMPermitUsers)
-		gm.PUT("/wecom/config", deps.WeComHandler.GMSaveConfig)
-		gm.POST("/wecom/test", deps.WeComHandler.GMTest)
-		gm.POST("/wecom/sync", deps.WeComHandler.GMSync)
-		gm.POST("/wecom/analyze", deps.WeComHandler.GMAnalyze)
-		gm.GET("/wecom/messages", deps.WeComHandler.GMMessages)
-		gm.GET("/wecom/conversations", deps.WeComHandler.GMConversations)
-		gm.GET("/wecom/conversations/:id/messages", deps.WeComHandler.GMConversationMessages)
-		gm.GET("/wecom/analysis-runs", deps.WeComHandler.GMRuns)
-
 		// Test chat only needs a caller token. It reuses the same BizAuth, session
 		// persistence and chat pipeline as external callers.
 		test := gm.Group("/test", middleware.BizAuth(deps.Auth), middleware.BizRateLimit(deps.PublicLimiter))

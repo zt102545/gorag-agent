@@ -1,4 +1,4 @@
-package vectorstore
+﻿package vectorstore
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 type RedisSearchStore struct {
@@ -209,7 +209,7 @@ func buildTextQuery(queryText string) string {
 
 // buildRelaxedTextQuery creates overlapping three-rune alternatives for
 // Chinese questions. RedisSearch's Chinese parser uses AND semantics for a
-// plain sentence, so a small morphology change such as "用途" -> "用" can
+// plain sentence, so a small morphology change such as "鐢ㄩ€? -> "鐢? can
 // otherwise eliminate an almost exact question. Restricting the alternatives
 // to @question and reranking later keeps this recall expansion bounded.
 func buildRelaxedTextQuery(queryText string) string {

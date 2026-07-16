@@ -1,4 +1,4 @@
-package admin
+﻿package admin
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/yourorg/agent_customer_service/internal/db"
+	"github.com/gorag-ai/gorag/internal/db"
 )
 
 const (

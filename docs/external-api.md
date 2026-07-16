@@ -109,7 +109,7 @@ Authorization: Bearer <caller_token>
 GM 为渠道开启“公开控件”后，浏览器可直接申请约 15 分钟有效的短期 Token，不需要 App Secret：
 
 ```http
-POST https://testapi.realcopyright.cn/api/v1/biz/auth/public-token
+POST http://localhost:8080/api/v1/biz/auth/public-token
 Origin: https://www.example.com
 Content-Type: application/json
 

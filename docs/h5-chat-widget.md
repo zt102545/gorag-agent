@@ -1,13 +1,13 @@
 # H5 客服控件接入文档
 
-客服服务地址：`https://testapi.realcopyright.cn`
+客服服务地址：`http://localhost:8080`
 
 ## 一、接入方要做什么
 
 公开控件模式下，接入方不需要开发换票接口，也不需要保存 `App ID` 或 `App Secret`。只需要在页面中引用脚本，并传入渠道 ID 和用户 ID：
 
 ```html
-<script src="https://testapi.realcopyright.cn/customer-service-widget.js"></script>
+<script src="http://localhost:8080/customer-service-widget.js"></script>
 
 <customer-service-widget
   channel-id="website-main"
@@ -61,7 +61,7 @@
     <title>在线客服</title>
   </head>
   <body>
-    <script src="https://testapi.realcopyright.cn/customer-service-widget.js"></script>
+    <script src="http://localhost:8080/customer-service-widget.js"></script>
     <customer-service-widget channel-id="website-main"></customer-service-widget>
 
     <script>
@@ -105,7 +105,7 @@ widget.close()
 | --- | --- | --- | --- |
 | `channel-id` | `channelId` | 是 | GM 中已开启的公开渠道 ID |
 | `caller-user-id` | `callerUserId` | 是 | 登录用户 ID 或持久化的匿名 ID |
-| `api-base` | `apiBase` | 否 | 自动取脚本域名，即 `https://testapi.realcopyright.cn` |
+| `api-base` | `apiBase` | 否 | 自动取脚本域名，即 `http://localhost:8080` |
 | `tenant-id` | `tenantId` | 否 | 公开模式使用渠道绑定的租户，接入方通常无需填写 |
 | `title` | `title` | 否 | `在线客服` |
 | `greeting` | `greeting` | 否 | 控件欢迎语 |
@@ -194,8 +194,8 @@ https://www.example.com/customer-service/page
 
 ```http
 Content-Security-Policy:
-  script-src 'self' https://testapi.realcopyright.cn;
-  connect-src 'self' https://testapi.realcopyright.cn;
+  script-src 'self' http://localhost:8080;
+  connect-src 'self' http://localhost:8080;
   img-src 'self' https:;
 ```
 
@@ -238,5 +238,5 @@ Content-Security-Policy:
 
 服务检查地址：
 
-- `https://testapi.realcopyright.cn/health`
-- `https://testapi.realcopyright.cn/customer-service-widget.js`
+- `http://localhost:8080/health`
+- `http://localhost:8080/customer-service-widget.js`

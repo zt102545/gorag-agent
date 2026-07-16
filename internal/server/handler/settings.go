@@ -1,13 +1,13 @@
-package handler
+﻿package handler
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
-	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	"github.com/gorag-ai/gorag/internal/admin"
+	settingsapp "github.com/gorag-ai/gorag/internal/application/settings"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 type SettingsHandler struct {

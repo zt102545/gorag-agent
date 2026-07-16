@@ -1,9 +1,9 @@
-package handler
+﻿package handler
 
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 func Health(c *gin.Context) {

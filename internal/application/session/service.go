@@ -1,11 +1,11 @@
-package sessionapp
+﻿package sessionapp
 
 import (
 	"context"
 
 	"github.com/cloudwego/eino/schema"
 
-	sessiondomain "github.com/yourorg/agent_customer_service/internal/session"
+	sessiondomain "github.com/gorag-ai/gorag/internal/session"
 )
 
 type Store interface {

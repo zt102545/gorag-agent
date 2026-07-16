@@ -1,4 +1,4 @@
-package qa
+﻿package qa
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
+	"github.com/gorag-ai/gorag/internal/admin"
 )
 
 type PromptResolver interface {
@@ -102,7 +102,7 @@ func (c *Classifier) process(ctx context.Context, id string) error {
 		return err
 	}
 	msg, err := chatModel.Generate(ctx, []*schema.Message{
-		schema.SystemMessage("你只能输出合法 JSON。"),
+		schema.SystemMessage("浣犲彧鑳借緭鍑哄悎娉?JSON銆?),
 		schema.UserMessage(prompt),
 	})
 	if err != nil {
@@ -161,11 +161,11 @@ func parseClassifyJSON(content string) (*classifyResult, error) {
 	return &out, nil
 }
 
-const defaultClassifyFallback = `你是客服知识库分类助手。根据问答内容产出 category 与 tags。
-只输出 JSON：{"category":"...","tags":["..."]}
+const defaultClassifyFallback = `浣犳槸瀹㈡湇鐭ヨ瘑搴撳垎绫诲姪鎵嬨€傛牴鎹棶绛斿唴瀹逛骇鍑?category 涓?tags銆?
+鍙緭鍑?JSON锛歿"category":"...","tags":["..."]}
 
-历史分类：{{categories}}
-历史标签：{{tags}}
+鍘嗗彶鍒嗙被锛歿{categories}}
+鍘嗗彶鏍囩锛歿{tags}}
 
-问题：{{question}}
-答案：{{answer}}`
+闂锛歿{question}}
+绛旀锛歿{answer}}`

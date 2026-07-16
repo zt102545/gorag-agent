@@ -1,10 +1,10 @@
-package bootstrap
+﻿package bootstrap
 
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/server"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/server"
 )
 
 func newHTTPRouter(cfg *config.Config, deps *server.Deps) *gin.Engine {

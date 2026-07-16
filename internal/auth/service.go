@@ -1,4 +1,4 @@
-package auth
+﻿package auth
 
 import (
 	"context"
@@ -15,9 +15,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
-	"github.com/yourorg/agent_customer_service/internal/appscope"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/db"
+	"github.com/gorag-ai/gorag/internal/appscope"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/db"
 )
 
 const (

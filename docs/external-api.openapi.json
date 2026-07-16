@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.3",
   "info": {"title": "客服对外 Biz API", "version": "1.0.0", "description": "客服会话及问答接口。Idempotency-Key 和 client_message_id 当前不提供服务端去重。"},
-  "servers": [{"url": "https://testapi.realcopyright.cn"}],
+  "servers": [{"url": "http://localhost:8080"}],
   "security": [{"BearerAuth": []}],
   "paths": {
     "/api/v1/biz/auth/public-token": {"post": {"security": [], "tags": ["Auth"], "summary": "公开控件申请短期 Token", "description": "按公开渠道、Origin 和客户端 IP 签发约 15 分钟有效的 Token，并执行每分钟限制与每日配额。", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PublicTokenRequest"}}}}, "responses": {"200": {"description": "成功"}, "403": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/TooManyRequests"}, "503": {"$ref": "#/components/responses/ServiceUnavailable"}}}},

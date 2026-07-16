@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"github.com/cloudwego/eino/adk"
@@ -6,10 +6,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"strings"
 
-	"github.com/yourorg/agent_customer_service/internal/server/middleware"
-	"github.com/yourorg/agent_customer_service/internal/session"
-	"github.com/yourorg/agent_customer_service/pkg/response"
-	"github.com/yourorg/agent_customer_service/pkg/sse"
+	"github.com/gorag-ai/gorag/internal/server/middleware"
+	"github.com/gorag-ai/gorag/internal/session"
+	"github.com/gorag-ai/gorag/pkg/response"
+	"github.com/gorag-ai/gorag/pkg/sse"
 )
 
 type ApprovalHandler struct {

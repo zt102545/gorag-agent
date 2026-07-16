@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 
-	agenttools "github.com/yourorg/agent_customer_service/internal/agent/tools"
-	"github.com/yourorg/agent_customer_service/internal/graph/rag"
+	agenttools "github.com/gorag-ai/gorag/internal/agent/tools"
+	"github.com/gorag-ai/gorag/internal/graph/rag"
 )
 
 func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingChatModel, ragService *rag.Service, instruction string) (adk.Agent, error) {
@@ -24,7 +24,7 @@ func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingCha
 
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "CustomerServiceAgent",
-		Description: "智能客服助手，可检索知识库",
+		Description: "鏅鸿兘瀹㈡湇鍔╂墜锛屽彲妫€绱㈢煡璇嗗簱",
 		Instruction: instruction,
 		Model:       chatModel,
 		ToolsConfig: adk.ToolsConfig{

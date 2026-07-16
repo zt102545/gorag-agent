@@ -1,4 +1,4 @@
-package session
+﻿package session
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 const (

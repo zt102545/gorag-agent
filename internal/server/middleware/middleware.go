@@ -1,4 +1,4 @@
-package middleware
+﻿package middleware
 
 import (
 	"log"
@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 
-	"github.com/yourorg/agent_customer_service/internal/appscope"
-	"github.com/yourorg/agent_customer_service/internal/auth"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	"github.com/gorag-ai/gorag/internal/appscope"
+	"github.com/gorag-ai/gorag/internal/auth"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 const (

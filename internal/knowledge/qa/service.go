@@ -1,4 +1,4 @@
-package qa
+﻿package qa
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/appscope"
-	"github.com/yourorg/agent_customer_service/internal/vectorstore"
+	"github.com/gorag-ai/gorag/internal/appscope"
+	"github.com/gorag-ai/gorag/internal/vectorstore"
 )
 
 const classifyQueueKey = "cs:qa:classify:queue"

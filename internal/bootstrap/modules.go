@@ -1,4 +1,4 @@
-package bootstrap
+﻿package bootstrap
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	knowledgeapp "github.com/yourorg/agent_customer_service/internal/application/knowledge"
-	sessionapp "github.com/yourorg/agent_customer_service/internal/application/session"
-	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
-	"github.com/yourorg/agent_customer_service/internal/checkpoint"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
-	"github.com/yourorg/agent_customer_service/internal/session"
-	"github.com/yourorg/agent_customer_service/internal/vectorstore"
+	knowledgeapp "github.com/gorag-ai/gorag/internal/application/knowledge"
+	sessionapp "github.com/gorag-ai/gorag/internal/application/session"
+	settingsapp "github.com/gorag-ai/gorag/internal/application/settings"
+	"github.com/gorag-ai/gorag/internal/checkpoint"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/knowledge/qa"
+	"github.com/gorag-ai/gorag/internal/session"
+	"github.com/gorag-ai/gorag/internal/vectorstore"
 )
 
 func newSessionModule(gdb *gorm.DB) (*session.SQLStore, *sessionapp.Service) {

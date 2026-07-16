@@ -1,4 +1,4 @@
-package db
+﻿package db
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/yourorg/agent_customer_service/internal/appscope"
+	"github.com/gorag-ai/gorag/internal/appscope"
 )
 
 type legacyQAItem struct {

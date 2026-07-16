@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"net/http"
@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	knowledgeapp "github.com/yourorg/agent_customer_service/internal/application/knowledge"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/unanswered"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	knowledgeapp "github.com/gorag-ai/gorag/internal/application/knowledge"
+	"github.com/gorag-ai/gorag/internal/knowledge/qa"
+	"github.com/gorag-ai/gorag/internal/knowledge/unanswered"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 type UnansweredHandler struct {

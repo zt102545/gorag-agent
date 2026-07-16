@@ -1,14 +1,14 @@
-package handler
+﻿package handler
 
 import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
 
-	sessionapp "github.com/yourorg/agent_customer_service/internal/application/session"
-	"github.com/yourorg/agent_customer_service/internal/server/middleware"
-	"github.com/yourorg/agent_customer_service/internal/session"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	sessionapp "github.com/gorag-ai/gorag/internal/application/session"
+	"github.com/gorag-ai/gorag/internal/server/middleware"
+	"github.com/gorag-ai/gorag/internal/session"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 type SessionHandler struct {

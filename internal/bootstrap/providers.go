@@ -1,4 +1,4 @@
-package bootstrap
+﻿package bootstrap
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
-	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/db"
-	redispkg "github.com/yourorg/agent_customer_service/pkg/redis"
+	"github.com/gorag-ai/gorag/internal/admin"
+	settingsapp "github.com/gorag-ai/gorag/internal/application/settings"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/db"
+	redispkg "github.com/gorag-ai/gorag/pkg/redis"
 )
 
 func newDatabase(cfg *config.Config) (*gorm.DB, error) {

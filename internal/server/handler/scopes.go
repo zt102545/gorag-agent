@@ -1,12 +1,12 @@
-package handler
+﻿package handler
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	scopesapp "github.com/yourorg/agent_customer_service/internal/application/scopes"
-	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
+	scopesapp "github.com/gorag-ai/gorag/internal/application/scopes"
+	settingsapp "github.com/gorag-ai/gorag/internal/application/settings"
 )
 
 type ScopeHandler struct {

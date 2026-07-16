@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/yourorg/agent_customer_service/internal/bootstrap"
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/bootstrap"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 func main() {

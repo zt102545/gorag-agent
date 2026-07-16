@@ -1,4 +1,4 @@
-package db
+﻿package db
 
 import (
 	"database/sql"
@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 func Open(cfg config.DatabaseConfig) (*gorm.DB, error) {
@@ -99,8 +99,5 @@ func Models() []any {
 		&AIErrorLog{},
 		&Session{},
 		&Message{},
-		&WeComArchiveConfig{},
-		&WeComMessage{},
-		&WeComAnalysisRun{},
 	}
 }

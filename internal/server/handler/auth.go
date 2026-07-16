@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"fmt"
@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/yourorg/agent_customer_service/internal/auth"
-	"github.com/yourorg/agent_customer_service/internal/server/middleware"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	"github.com/gorag-ai/gorag/internal/auth"
+	"github.com/gorag-ai/gorag/internal/server/middleware"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 type AuthHandler struct {

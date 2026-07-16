@@ -1,4 +1,4 @@
-package settingsapp
+﻿package settingsapp
 
 import (
 	"context"
@@ -7,10 +7,10 @@ import (
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/components/model"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
-	"github.com/yourorg/agent_customer_service/internal/appscope"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	modelfactory "github.com/yourorg/agent_customer_service/internal/model"
+	"github.com/gorag-ai/gorag/internal/admin"
+	"github.com/gorag-ai/gorag/internal/appscope"
+	"github.com/gorag-ai/gorag/internal/config"
+	modelfactory "github.com/gorag-ai/gorag/internal/model"
 )
 
 type RuntimeRegistry struct {

@@ -1,4 +1,4 @@
-package indexer
+﻿package indexer
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 // Legacy markdown/txt document indexer (optional path; QA uses vectorstore).

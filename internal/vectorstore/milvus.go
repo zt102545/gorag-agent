@@ -1,4 +1,4 @@
-package vectorstore
+﻿package vectorstore
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 type MilvusStore struct {

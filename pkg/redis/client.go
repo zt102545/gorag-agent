@@ -1,9 +1,9 @@
-package redis
+﻿package redis
 
 import (
 	"github.com/redis/go-redis/v9"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 func NewClient(cfg config.RedisConfig) *redis.Client {

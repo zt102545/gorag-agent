@@ -1,4 +1,4 @@
-package dbmigration
+﻿package dbmigration
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	appdb "github.com/yourorg/agent_customer_service/internal/db"
+	appdb "github.com/gorag-ai/gorag/internal/db"
 )
 
 func TestServiceRun_CopiesAndCanUpsertAllModels(t *testing.T) {

@@ -1,4 +1,4 @@
-package bootstrap
+﻿package bootstrap
 
 import (
 	"context"
@@ -8,22 +8,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
-	"github.com/yourorg/agent_customer_service/internal/agent"
-	scopesapp "github.com/yourorg/agent_customer_service/internal/application/scopes"
-	"github.com/yourorg/agent_customer_service/internal/auth"
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/graph/rag"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/unanswered"
-	"github.com/yourorg/agent_customer_service/internal/observability"
-	"github.com/yourorg/agent_customer_service/internal/server"
-	"github.com/yourorg/agent_customer_service/internal/server/handler"
-	"github.com/yourorg/agent_customer_service/internal/server/middleware"
-	"github.com/yourorg/agent_customer_service/internal/vectorstore"
-	"github.com/yourorg/agent_customer_service/internal/wecom"
-	wecomsdk "github.com/yourorg/agent_customer_service/internal/wecom/sdk"
-	"github.com/yourorg/agent_customer_service/pkg/sse"
+	"github.com/gorag-ai/gorag/internal/admin"
+	"github.com/gorag-ai/gorag/internal/agent"
+	scopesapp "github.com/gorag-ai/gorag/internal/application/scopes"
+	"github.com/gorag-ai/gorag/internal/auth"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/graph/rag"
+	"github.com/gorag-ai/gorag/internal/knowledge/qa"
+	"github.com/gorag-ai/gorag/internal/knowledge/unanswered"
+	"github.com/gorag-ai/gorag/internal/observability"
+	"github.com/gorag-ai/gorag/internal/server"
+	"github.com/gorag-ai/gorag/internal/server/handler"
+	"github.com/gorag-ai/gorag/internal/server/middleware"
+	"github.com/gorag-ai/gorag/internal/vectorstore"
+	"github.com/gorag-ai/gorag/pkg/sse"
 )
 
 type Application struct {
@@ -103,8 +101,6 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 	classifier := qa.NewClassifier(qaService, runtime, newModelFactory(runtime), cfg.Classify.Workers, aiErrorSvc)
 	classifier.Start(ctx)
 
-	wecomService := wecom.NewService(gdb, wecomsdk.NativeFactory{}, ragService, newModelFactory(runtime), unansweredService, cfg.WeCom.EncryptionKey)
-	wecomService.Start(ctx)
 	scopeService := scopesapp.NewService(gdb, qaService)
 
 	sseWriter := sse.NewWriter()
@@ -122,7 +118,7 @@ func NewApp(ctx context.Context, cfg *config.Config) (*Application, func(), erro
 		AIErrorHandler:      handler.NewAIErrorHandler(aiErrorSvc),
 		UnansweredHandler:   handler.NewUnansweredHandler(unansweredService, knowledgeApp),
 		ScopeHandler:        handler.NewScopeHandler(scopeService, settingsApp),
-		WeComHandler:        handler.NewWeComHandler(wecomService),
+
 		PublicLimiter:       publicLimiter,
 	})
 

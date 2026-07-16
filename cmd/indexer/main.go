@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -8,12 +8,12 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
-	"github.com/yourorg/agent_customer_service/internal/db"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
-	"github.com/yourorg/agent_customer_service/internal/model"
-	"github.com/yourorg/agent_customer_service/internal/vectorstore"
-	redispkg "github.com/yourorg/agent_customer_service/pkg/redis"
+	"github.com/gorag-ai/gorag/internal/config"
+	"github.com/gorag-ai/gorag/internal/db"
+	"github.com/gorag-ai/gorag/internal/knowledge/qa"
+	"github.com/gorag-ai/gorag/internal/model"
+	"github.com/gorag-ai/gorag/internal/vectorstore"
+	redispkg "github.com/gorag-ai/gorag/pkg/redis"
 )
 
 func main() {

@@ -4,7 +4,7 @@
 
 Executables live in `cmd/server/` and `cmd/indexer/`; domain and application code belongs under `internal/`, while reusable helpers live in `pkg/`. Backend tests are colocated as `*_test.go`. Runtime YAML is in `config/`, sample knowledge data in `data/knowledge/`, documentation in `docs/`, and deployment assets in `deployments/`.
 
-The repository includes a Vue 3 admin app under `web/`. A separate frontend client, `Web-GM-Client`, is located at `D:\project\Web-GM-Client`; changes that affect shared APIs or GM behavior may require coordinated updates there. In either frontend, put routed pages in `src/views/`, reusable UI in `src/components/`, feature code in `src/features/`, and static files in `public/`.
+The repository includes a Vue 3 admin app under `web/`. Put routed pages in `src/views/`, reusable UI in `src/components/`, feature code in `src/features/`, and static files in `public/`.
 
 ## Build, Test, and Development Commands
 

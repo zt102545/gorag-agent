@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"net/http"
@@ -7,12 +7,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	knowledgeapp "github.com/yourorg/agent_customer_service/internal/application/knowledge"
-	sessionapp "github.com/yourorg/agent_customer_service/internal/application/session"
-	settingsapp "github.com/yourorg/agent_customer_service/internal/application/settings"
-	"github.com/yourorg/agent_customer_service/internal/knowledge/qa"
-	"github.com/yourorg/agent_customer_service/internal/session"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	knowledgeapp "github.com/gorag-ai/gorag/internal/application/knowledge"
+	sessionapp "github.com/gorag-ai/gorag/internal/application/session"
+	settingsapp "github.com/gorag-ai/gorag/internal/application/settings"
+	"github.com/gorag-ai/gorag/internal/knowledge/qa"
+	"github.com/gorag-ai/gorag/internal/session"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 type KnowledgeHandler struct {

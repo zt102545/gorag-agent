@@ -1,4 +1,4 @@
-package model
+﻿package model
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"github.com/yourorg/agent_customer_service/internal/config"
+	"github.com/gorag-ai/gorag/internal/config"
 )
 
 var (
@@ -53,7 +53,7 @@ func NewEmbedder(ctx context.Context, cfg config.EmbeddingConfig) (embedding.Emb
 			Model:      cfg.ModelName,
 			Dimensions: dims,
 		})
-	case "ark", "volc", "volcengine", "火山", "火山方舟":
+	case "ark", "volc", "volcengine", "鐏北", "鐏北鏂硅垷":
 		var dims *int
 		if cfg.Dimensions > 0 {
 			dims = &cfg.Dimensions
@@ -64,7 +64,7 @@ func NewEmbedder(ctx context.Context, cfg config.EmbeddingConfig) (embedding.Emb
 			Model:      cfg.ModelName,
 			Dimensions: dims,
 		})
-	case "ark_multimodal", "ark-multimodal", "volc_multimodal", "volcengine_multimodal", "火山多模态", "火山方舟多模态":
+	case "ark_multimodal", "ark-multimodal", "volc_multimodal", "volcengine_multimodal", "鐏北澶氭ā鎬?, "鐏北鏂硅垷澶氭ā鎬?:
 		var dims *int
 		if cfg.Dimensions > 0 {
 			dims = &cfg.Dimensions

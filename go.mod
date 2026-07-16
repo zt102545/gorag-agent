@@ -1,4 +1,4 @@
-module github.com/yourorg/agent_customer_service
+﻿module github.com/gorag-ai/gorag
 
 go 1.25.1
 

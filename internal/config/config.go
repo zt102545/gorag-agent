@@ -21,7 +21,6 @@ type Config struct {
 	JWT         JWTConfig         `mapstructure:"jwt"`
 	Admin       AdminConfig       `mapstructure:"admin"`
 	Classify    ClassifyConfig    `mapstructure:"classify"`
-	WeCom       WeComConfig       `mapstructure:"wecom"`
 
 	// Legacy rag section for one-shot migration.
 	LegacyRAG legacyRAGConfig `mapstructure:"rag"`
@@ -135,10 +134,6 @@ type ClassifyConfig struct {
 	Workers int `mapstructure:"workers"`
 }
 
-type WeComConfig struct {
-	EncryptionKey string `mapstructure:"encryption_key"`
-}
-
 func Load(env string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigName("config")
@@ -182,7 +177,6 @@ func Load(env string) (*Config, error) {
 	_ = v.BindEnv("vector_store.milvus.token", "MILVUS_TOKEN")
 	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
 	_ = v.BindEnv("redis.password", "REDIS_PASSWORD")
-	_ = v.BindEnv("wecom.encryption_key", "WECOM_CONFIG_ENCRYPTION_KEY")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -310,9 +304,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Redis.PoolTimeout <= 0 {
 		cfg.Redis.PoolTimeout = 4 * time.Second
-	}
-	if cfg.WeCom.EncryptionKey == "" {
-		cfg.WeCom.EncryptionKey = cfg.JWT.Secret
 	}
 }
 

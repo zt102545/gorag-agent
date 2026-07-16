@@ -1,11 +1,11 @@
-package handler
+﻿package handler
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	widgetassets "github.com/yourorg/agent_customer_service/web/public"
+	widgetassets "github.com/gorag-ai/gorag/web/public"
 )
 
 func CustomerServiceWidget(c *gin.Context) {

@@ -11,7 +11,7 @@ build:
 	go build -o bin/migrate ./cmd/migrate
 
 build-linux:
-	docker build -f deployments/Dockerfile -t agent-customer-service:wecom .
+	docker build -f deployments/Dockerfile -t gorag-agent:latest .
 
 indexer:
 	go run ./cmd/indexer --file ./data/knowledge/qa.csv

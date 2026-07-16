@@ -1,10 +1,10 @@
-package handler
+﻿package handler
 
 import (
 	"github.com/gin-gonic/gin"
 
-	"github.com/yourorg/agent_customer_service/internal/admin"
-	"github.com/yourorg/agent_customer_service/pkg/response"
+	"github.com/gorag-ai/gorag/internal/admin"
+	"github.com/gorag-ai/gorag/pkg/response"
 )
 
 type AIErrorHandler struct {
