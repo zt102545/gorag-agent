@@ -1,4 +1,4 @@
-﻿package rag
+package rag
 
 import (
 	"context"
@@ -54,16 +54,19 @@ func (s *Service) Search(ctx context.Context, query string) (string, error) {
 		return "", err
 	}
 	if len(hits) == 0 {
-		return "鏈壘鍒扮浉鍏?QA 鐭ヨ瘑搴撳唴瀹广€?, nil
+		return "未找到相关 QA 知识库内容。", nil
 	}
 	return FormatHits(hits), nil
 }
 
+// SearchHits 这是整个 RAG 检索的入口，做四件事：并发双路检索 → 融合 → 重排 → 过滤。
 func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, nil
 	}
+	// ① 召回放大：候选池 = topK * 20，最少 100 条
+	//    为什么？召回阶段宁多勿漏，后面融合+重排再收窄到 topK
 	candidateLimit := s.topK * 20
 	if candidateLimit < 100 {
 		candidateLimit = 100
@@ -72,12 +75,13 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 		records []vectorstore.Record
 		err     error
 	}
+	// ② 文本检索放 goroutine 里跑（和下面的向量检索并发）
 	textResultCh := make(chan textSearchResult, 1)
 	go func() {
 		records, err := s.store.SearchText(ctx, query, candidateLimit)
 		textResultCh <- textSearchResult{records: records, err: err}
 	}()
-
+	// ③ 向量检索：先 embed 查询词，再 KNN
 	vecs, err := s.embedder.EmbedStrings(ctx, []string{query})
 	var vectorRecords []vectorstore.Record
 	vectorErr := err
@@ -92,7 +96,9 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 			vectorRecords, vectorErr = s.store.Search(ctx, qv, candidateLimit)
 		}
 	}
+	// ④ 等文本检索结果（同步点）
 	textResult := <-textResultCh
+	// ⑤ 容错分支：Milvus 不支持文本检索，返回 ErrTextSearchUnsupported
 	textSearchUnsupported := errors.Is(textResult.err, vectorstore.ErrTextSearchUnsupported)
 	if textSearchUnsupported {
 		textResult.err = nil
@@ -101,19 +107,24 @@ func (s *Service) SearchHits(ctx context.Context, query string) ([]SearchHit, er
 		return nil, fmt.Errorf("retrieve vector documents: %w", vectorErr)
 	}
 	if textResult.err != nil && vectorErr != nil {
+		// 两路都失败，报错
 		return nil, fmt.Errorf("retrieve text documents: %v; retrieve vector documents: %w", textResult.err, vectorErr)
 	}
 	if textResult.err != nil {
+		// 只有向量可用
 		return s.filterRecords(ctx, rerankRecords(query, fuseRecords(nil, vectorRecords, candidateLimit)))
 	}
 	if vectorErr != nil {
+		// 只有文本可用
 		return s.filterRecords(ctx, rerankRecords(query, fuseRecords(textResult.records, nil, candidateLimit)))
 	}
+	// ⑥ 正常路径：两路结果 → 融合 → 重排 → 过滤
 	records := rerankRecords(query, fuseRecords(textResult.records, vectorRecords, candidateLimit))
 	return s.filterRecords(ctx, records)
 }
 
 func (s *Service) filterRecords(ctx context.Context, records []vectorstore.Record) ([]SearchHit, error) {
+	// 情况1：没配知识库过滤器（单知识库部署）→ 直接截断 topK 返回
 	if s.filterKnowledgeBase == nil {
 		if len(records) > s.topK {
 			records = records[:s.topK]
@@ -124,6 +135,7 @@ func (s *Service) filterRecords(ctx context.Context, records []vectorstore.Recor
 	for _, rec := range records {
 		ids = append(ids, rec.ID)
 	}
+	// 情况2：多知识库（多租户）→ 只保留属于当前 caller 所绑定知识库的 QA
 	allowed, err := s.filterKnowledgeBase(ctx, "", ids)
 	if err != nil {
 		return nil, err
@@ -138,6 +150,7 @@ func (s *Service) filterRecords(ctx context.Context, records []vectorstore.Recor
 			break
 		}
 	}
+	// 再补上 QA 入库时间（供 prompt 展示）
 	hits := searchHitsFromRecords(filtered)
 	if s.loadCreatedAt == nil || len(hits) == 0 {
 		return hits, nil
@@ -164,9 +177,9 @@ func idsFromHits(hits []SearchHit) []string {
 }
 
 const (
-	rrfRankConstant  = 60.0
-	textRankWeight   = 1.25
-	vectorRankWeight = 1.0
+	rrfRankConstant  = 60.0 // RRF 的 k 值
+	textRankWeight   = 1.25 // 文本路权重
+	vectorRankWeight = 1.0  // 向量路权重
 )
 
 // fuseRecords combines independently ranked BM25 and vector results. RRF is
@@ -182,35 +195,39 @@ func fuseRecords(textRecords, vectorRecords []vectorstore.Record, limit int) []v
 		score    float64
 		bestRank int
 	}
+	// 用 ID 去重合并两路
 	byID := make(map[string]*fusedRecord, len(textRecords)+len(vectorRecords))
 	add := func(records []vectorstore.Record, weight float64) {
 		for i, record := range records {
 			if record.ID == "" {
 				continue
 			}
-			rank := i + 1
+			rank := i + 1 // 第 1 名 rank=1
 			entry := byID[record.ID]
 			if entry == nil {
 				copy := record
 				entry = &fusedRecord{record: copy, bestRank: rank}
 				byID[record.ID] = entry
 			} else {
-				enrichRecord(&entry.record, record)
+				enrichRecord(&entry.record, record) // 补全缺失字段
 				if rank < entry.bestRank {
 					entry.bestRank = rank
 				}
 			}
+			// 关键：累加 weight / (k + rank)
 			entry.score += weight / (rrfRankConstant + float64(rank))
 		}
 	}
-	add(textRecords, textRankWeight)
-	add(vectorRecords, vectorRankWeight)
+	add(textRecords, textRankWeight)     // 文本路：权重 1.25
+	add(vectorRecords, vectorRankWeight) // 向量路：权重 1.0
+	// 归一化分母：某文档在两路都排第 1 时的理论最大分
 	maxScore := (textRankWeight + vectorRankWeight) / (rrfRankConstant + 1)
 	entries := make([]*fusedRecord, 0, len(byID))
 	for _, entry := range byID {
 		entry.record.Score = entry.score / maxScore
 		entries = append(entries, entry)
 	}
+	// 排序：score 高优先 → bestRank 小优先 → ID 兜底保证确定性
 	sort.SliceStable(entries, func(i, j int) bool {
 		if entries[i].score != entries[j].score {
 			return entries[i].score > entries[j].score
@@ -323,20 +340,20 @@ func FormatHits(hits []SearchHit) string {
 
 func FormatHitsAt(hits []SearchHit, now time.Time) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("褰撳墠鏃堕棿: %s\n\n", now.Format(time.RFC3339)))
+	builder.WriteString(fmt.Sprintf("当前时间: %s\n\n", now.Format(time.RFC3339)))
 	for i, rec := range hits {
 		builder.WriteString(fmt.Sprintf("[%d]", i+1))
 		if rec.Category != "" {
-			builder.WriteString(fmt.Sprintf(" 鍒嗙被: %s", rec.Category))
+			builder.WriteString(fmt.Sprintf(" 分类: %s", rec.Category))
 		}
 		if len(rec.Tags) > 0 {
-			builder.WriteString(fmt.Sprintf(" 鏍囩: %s", strings.Join(rec.Tags, ", ")))
+			builder.WriteString(fmt.Sprintf(" 标签: %s", strings.Join(rec.Tags, ", ")))
 		}
 		builder.WriteString("\n")
 		builder.WriteString(fmt.Sprintf("Q: %s\n", rec.Question))
 		builder.WriteString(fmt.Sprintf("A: %s\n", rec.Answer))
 		if rec.CreatedAt != nil && !rec.CreatedAt.IsZero() {
-			builder.WriteString(fmt.Sprintf("QA鍏ュ簱鏃堕棿: %s\n", rec.CreatedAt.Format(time.RFC3339)))
+			builder.WriteString(fmt.Sprintf("QA入库时间: %s\n", rec.CreatedAt.Format(time.RFC3339)))
 		}
 		if rec.Score != 0 {
 			builder.WriteString(fmt.Sprintf("Score: %.4f\n", rec.Score))

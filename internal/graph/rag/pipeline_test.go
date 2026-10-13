@@ -1,4 +1,4 @@
-﻿package rag
+package rag
 
 import (
 	"context"
@@ -63,10 +63,10 @@ func TestService_SearchHitsLoadsCreatedAtFromMetadataStore(t *testing.T) {
 	createdAt := time.Date(2026, 7, 1, 9, 30, 0, 0, time.FixedZone("CST", 8*60*60))
 	store := &staticStore{
 		textRecords: []vectorstore.Record{{
-			ID: "qa-1", Question: "娲诲姩浠€涔堟椂鍊欑粨鏉燂紵", Answer: "7鏈?1鏃ョ粨鏉熴€?,
+			ID: "qa-1", Question: "活动什么时候结束？", Answer: "7月31日结束。",
 		}},
 		vectorRecords: []vectorstore.Record{{
-			ID: "qa-1", Question: "娲诲姩浠€涔堟椂鍊欑粨鏉燂紵", Answer: "7鏈?1鏃ョ粨鏉熴€?,
+			ID: "qa-1", Question: "活动什么时候结束？", Answer: "7月31日结束。",
 		}},
 	}
 	service := NewService(store, &staticEmbedder{vector: []float64{0.25, 0.75}}, 3)
@@ -80,14 +80,14 @@ func TestService_SearchHitsLoadsCreatedAtFromMetadataStore(t *testing.T) {
 		return map[string]time.Time{"qa-1": createdAt}, nil
 	})
 
-	hits, err := service.SearchHits(context.Background(), "娲诲姩缁撴潫鏃堕棿")
+	hits, err := service.SearchHits(context.Background(), "活动结束时间")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(hits) != 1 || hits[0].CreatedAt == nil || !hits[0].CreatedAt.Equal(createdAt) {
 		t.Fatalf("created_at was not loaded: %+v", hits)
 	}
-	if store.textSearchCalls != 1 || store.vectorSearchCalls != 1 || store.lastTextQuery != "娲诲姩缁撴潫鏃堕棿" {
+	if store.textSearchCalls != 1 || store.vectorSearchCalls != 1 || store.lastTextQuery != "活动结束时间" {
 		t.Fatalf("expected one text and one vector search: %+v", store)
 	}
 	if len(store.lastVectorQuery) != 2 || store.lastVectorQuery[0] != 0.25 || store.lastVectorQuery[1] != 0.75 {
@@ -122,10 +122,10 @@ func TestFuseRecords_PromotesDocumentsFoundByBothRetrievers(t *testing.T) {
 
 func TestRerankRecords_PromotesNearExactQuestionVariant(t *testing.T) {
 	records := []vectorstore.Record{
-		{ID: "related", Question: "浠€涔堟槸鍗曞垎闀滃墽鏈敼鍐?, Score: 0.56},
-		{ID: "target", Question: "鍗曞垎闀滄敼鍐欏姛鑳芥湁浠€涔堢敤閫旓紵", Score: 0.55},
+		{ID: "related", Question: "什么是单分镜剧本改写", Score: 0.56},
+		{ID: "target", Question: "单分镜改写功能有什么用途？", Score: 0.55},
 	}
-	got := rerankRecords("鍗曞垎闀滄敼鍐欏姛鑳芥湁浠€涔堢敤", records)
+	got := rerankRecords("单分镜改写功能有什么用", records)
 	if got[0].ID != "target" {
 		t.Fatalf("reranked order=%v, want near-exact target first", idsFromRecords(got))
 	}
@@ -181,8 +181,8 @@ func TestFormatHitsAtIncludesCurrentAndQACreationTimes(t *testing.T) {
 	}}, now)
 
 	for _, want := range []string{
-		"褰撳墠鏃堕棿: 2026-07-14T16:20:00+08:00",
-		"QA鍏ュ簱鏃堕棿: 2026-06-10T08:15:00Z",
+		"当前时间: 2026-07-14T16:20:00+08:00",
+		"QA入库时间: 2026-06-10T08:15:00Z",
 	} {
 		if !strings.Contains(formatted, want) {
 			t.Fatalf("formatted result %q does not contain %q", formatted, want)

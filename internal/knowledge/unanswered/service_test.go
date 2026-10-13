@@ -1,4 +1,4 @@
-﻿package unanswered
+package unanswered
 
 import (
 	"context"
@@ -31,31 +31,31 @@ func TestCapture_DraftPrefillsButDoesNotOverwriteHumanAnswer(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate the same question already existing from another channel. The
-	// first analysis should still prefill the employee's answer.
-	if err := service.Capture(ctx, CaptureInput{Question: "鎬庝箞閫€娆撅紵", TenantID: "default"}); err != nil {
+	// first WeCom analysis should still prefill the employee's answer.
+	if err := service.Capture(ctx, CaptureInput{Question: "怎么退款？", TenantID: "wecom"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Capture(ctx, CaptureInput{Question: "鎬庝箞閫€娆撅紵", TenantID: "default", Source: "analysis", SourceRef: "msg-1", DraftAnswer: "璇锋彁渚涜鍗曞彿"}); err != nil {
+	if err := service.Capture(ctx, CaptureInput{Question: "怎么退款？", TenantID: "wecom", Source: "wecom", SourceRef: "msg-1", DraftAnswer: "请提供订单号"}); err != nil {
 		t.Fatal(err)
 	}
 	var row db.UnansweredQuestion
-	if err := gdb.First(&row, "question_hash = ?", hash("default", "鎬庝箞閫€娆撅紵")).Error; err != nil {
+	if err := gdb.First(&row, "question_hash = ?", hash("wecom", "怎么退款？")).Error; err != nil {
 		t.Fatal(err)
 	}
-	if row.Answer != "璇锋彁渚涜鍗曞彿" {
+	if row.Answer != "请提供订单号" {
 		t.Fatalf("prefilled answer = %q", row.Answer)
 	}
 
-	if err := gdb.Model(&row).Update("answer", "浜哄伐瀹℃牳鍚庣殑绛旀").Error; err != nil {
+	if err := gdb.Model(&row).Update("answer", "人工审核后的答案").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := service.Capture(ctx, CaptureInput{Question: "鎬庝箞閫€娆撅紵", TenantID: "default", Source: "analysis", SourceRef: "msg-1", DraftAnswer: "妯″瀷閲嶆柊鐢熸垚鐨勭瓟妗?}); err != nil {
+	if err := service.Capture(ctx, CaptureInput{Question: "怎么退款？", TenantID: "wecom", Source: "wecom", SourceRef: "msg-1", DraftAnswer: "模型重新生成的答案"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := gdb.First(&row, "id = ?", row.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if row.Answer != "浜哄伐瀹℃牳鍚庣殑绛旀" {
+	if row.Answer != "人工审核后的答案" {
 		t.Fatalf("human answer was overwritten: %q", row.Answer)
 	}
 }

@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func NewCustomerServiceAgent(ctx context.Context, chatModel model.ToolCallingCha
 
 	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        "CustomerServiceAgent",
-		Description: "鏅鸿兘瀹㈡湇鍔╂墜锛屽彲妫€绱㈢煡璇嗗簱",
+		Description: "智能客服助手，可检索知识库",
 		Instruction: instruction,
 		Model:       chatModel,
 		ToolsConfig: adk.ToolsConfig{

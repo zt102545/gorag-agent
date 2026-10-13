@@ -1,4 +1,4 @@
-﻿package scopes
+package scopes
 
 import (
 	"context"
@@ -32,7 +32,7 @@ type CopyRequest struct {
 func SeedDefaults(ctx context.Context, gdb *gorm.DB) error {
 	now := time.Now()
 	return gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		promptGroup := db.PromptGroup{ID: appscope.DefaultPromptGroupID, Name: "榛樿鎻愮ず璇嶇粍", Description: "鍗囩骇鍓嶅凡鏈夋彁绀鸿瘝", IsDefault: true, CreatedAt: now, UpdatedAt: now}
+		promptGroup := db.PromptGroup{ID: appscope.DefaultPromptGroupID, Name: "默认提示词组", Description: "升级前已有提示词", IsDefault: true, CreatedAt: now, UpdatedAt: now}
 		if err := tx.Where("id = ?", promptGroup.ID).FirstOrCreate(&promptGroup).Error; err != nil {
 			return err
 		}
@@ -52,7 +52,7 @@ func SeedDefaults(ctx context.Context, gdb *gorm.DB) error {
 				}
 			}
 		}
-		base := db.KnowledgeBase{ID: appscope.DefaultKnowledgeBaseID, Name: "榛樿鐭ヨ瘑搴?, Description: "鍗囩骇鍓嶅凡鏈?QA", IsDefault: true, CreatedAt: now, UpdatedAt: now}
+		base := db.KnowledgeBase{ID: appscope.DefaultKnowledgeBaseID, Name: "默认知识库", Description: "升级前已有 QA", IsDefault: true, CreatedAt: now, UpdatedAt: now}
 		if err := tx.Where("id = ?", base.ID).FirstOrCreate(&base).Error; err != nil {
 			return err
 		}

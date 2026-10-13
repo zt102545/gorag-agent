@@ -1,4 +1,4 @@
-﻿package tools
+package tools
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 )
 
 type SearchInput struct {
-	Query string `json:"query" jsonschema:"description=鐢ㄦ埛闂鎴栨绱㈠叧閿瘝"`
+	Query string `json:"query" jsonschema:"description=用户问题或检索关键词"`
 }
 
 type searchObserverKey struct{}
@@ -27,7 +27,7 @@ func WithSearchObserver(ctx context.Context, observer func(string, []rag.SearchH
 }
 
 func NewRAGSearchTool(service *rag.Service) (tool.InvokableTool, error) {
-	return utils.InferTool("knowledge_search", "妫€绱?QA 鐭ヨ瘑搴撳苟杩斿洖澶氭潯鍊欓€夐棶绛旓紙鍚爣鍑嗙瓟妗堬級锛涜鑷姣旇緝鐩稿叧鎬у悗缁勭粐鏈€缁堝洖澶?, func(ctx context.Context, input *SearchInput) (string, error) {
+	return utils.InferTool("knowledge_search", "检索 QA 知识库并返回多条候选问答（含标准答案）；请自行比较相关性后组织最终回复", func(ctx context.Context, input *SearchInput) (string, error) {
 		if input.Query == "" {
 			return "", fmt.Errorf("query is required")
 		}
@@ -39,25 +39,25 @@ func NewRAGSearchTool(service *rag.Service) (tool.InvokableTool, error) {
 			observer(input.Query, hits)
 		}
 		if len(hits) == 0 {
-			return "鏈壘鍒扮浉鍏?QA 鐭ヨ瘑搴撳唴瀹广€?, nil
+			return "未找到相关 QA 知识库内容。", nil
 		}
 		return rag.FormatHits(hits), nil
 	})
 }
 
 type TransferInput struct {
-	Reason  string `json:"reason" jsonschema:"description=杞汉宸ュ師鍥?`
-	Summary string `json:"summary" jsonschema:"description=褰撳墠瀵硅瘽鎽樿"`
+	Reason  string `json:"reason" jsonschema:"description=转人工原因"`
+	Summary string `json:"summary" jsonschema:"description=当前对话摘要"`
 }
 
 func NewTransferHumanTool(resolveHandoffReply func(context.Context) string) (tool.InvokableTool, error) {
-	return utils.InferTool("transfer_human", "灏嗙敤鎴疯浆鎺ョ粰浜哄伐瀹㈡湇", func(ctx context.Context, input *TransferInput) (string, error) {
+	return utils.InferTool("transfer_human", "将用户转接给人工客服", func(ctx context.Context, input *TransferInput) (string, error) {
 		reply := ""
 		if resolveHandoffReply != nil {
 			reply = strings.TrimSpace(resolveHandoffReply(ctx))
 		}
 		if reply == "" {
-			return fmt.Sprintf("宸蹭负浣犺褰曚汉宸ュ鏈嶈瘔姹傦紝璇风◢鍊欍€傚師鍥狅細%s", input.Reason), nil
+			return fmt.Sprintf("已为你记录人工客服诉求，请稍候。原因：%s", input.Reason), nil
 		}
 		return reply, nil
 	})

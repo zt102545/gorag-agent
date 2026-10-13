@@ -1,4 +1,4 @@
-﻿package server
+package server
 
 import (
 	"github.com/gin-gonic/gin"
@@ -24,7 +24,7 @@ type Deps struct {
 	UnansweredHandler   *handler.UnansweredHandler
 	ScopeHandler        *handler.ScopeHandler
 
-	PublicLimiter       *middleware.PublicIPLimiter
+	PublicLimiter *middleware.PublicIPLimiter
 }
 
 func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
@@ -101,7 +101,7 @@ func NewRouter(cfg *config.Config, deps *Deps) *gin.Engine {
 				unansweredWrite.DELETE("/:id", deps.UnansweredHandler.Delete)
 			}
 
-			// GM 娴嬭瘯瀹㈡湇锛堜笌 Biz 鍏辩敤鍚屼竴濂楀璇濊兘鍔涳紝JWT 閴存潈锛?
+			// GM 测试客服（与 Biz 共用同一套对话能力，JWT 鉴权）
 			playground := authed.Group("/playground", middleware.RequireRole(auth.RoleViewer))
 			{
 				playground.POST("/sessions", deps.SessionHandler.Create)

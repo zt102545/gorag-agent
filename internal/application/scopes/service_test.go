@@ -1,4 +1,4 @@
-﻿package scopes
+package scopes
 
 import (
 	"context"
@@ -76,7 +76,7 @@ func TestPromptGroupCopyAndDeleteBindingGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := NewService(gdb, nil)
-	copy, err := service.CopyPromptGroup(ctx, appscope.DefaultPromptGroupID, CopyRequest{Name: "娓犻亾 A"})
+	copy, err := service.CopyPromptGroup(ctx, appscope.DefaultPromptGroupID, CopyRequest{Name: "渠道 A"})
 	if err != nil {
 		t.Fatal(err)
 	}

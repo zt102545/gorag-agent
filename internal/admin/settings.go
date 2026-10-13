@@ -1,4 +1,4 @@
-﻿package admin
+package admin
 
 import (
 	"context"
@@ -108,26 +108,26 @@ func (s *SettingsService) seedLightRules(ctx context.Context) error {
 	}
 	defaults := []UpsertChatLightRuleRequest{
 		{
-			Name:         "瀵掓殑闂€?,
+			Name:         "寒暄问候",
 			Priority:     intPtr(300),
 			MatchType:    ChatRuleMatchKeywords,
-			Pattern:      "浣犲ソ,鎮ㄥソ,hi,hello,鍦ㄥ悧,鏈変汉鍚?,
+			Pattern:      "你好,您好,hi,hello,在吗,有人吗",
 			ActionType:   ChatRuleActionReply,
 			ResponseText: defaultSmalltalkReply,
 		},
 		{
-			Name:         "鎰熻阿缁撴潫璇?,
+			Name:         "感谢结束语",
 			Priority:     intPtr(260),
 			MatchType:    ChatRuleMatchKeywords,
-			Pattern:      "璋㈣阿,鎰熻阿,鍏堣繖鏍?娌′簨浜?鍐嶈,bye",
+			Pattern:      "谢谢,感谢,先这样,没事了,再见,bye",
 			ActionType:   ChatRuleActionReply,
-			ResponseText: "涓嶅姘旓紝濡傞渶缁х画鍜ㄨ璁㈠崟銆侀€€娆俱€侀厤閫佺瓑闂锛屽彲浠ラ殢鏃跺憡璇夋垜銆?,
+			ResponseText: "不客气，如需继续咨询订单、退款、配送等问题，可以随时告诉我。",
 		},
 		{
-			Name:       "鏄庣‘杞汉宸?,
+			Name:       "明确转人工",
 			Priority:   intPtr(400),
 			MatchType:  ChatRuleMatchKeywords,
-			Pattern:    "杞汉宸?浜哄伐瀹㈡湇,鑱旂郴浜哄伐,鎴戣浜哄伐",
+			Pattern:    "转人工,人工客服,联系人工,我要人工",
 			ActionType: ChatRuleActionHandoff,
 		},
 	}
@@ -154,7 +154,7 @@ func (s *SettingsService) seedProvider(ctx context.Context, kind string, src any
 	}
 	switch v := src.(type) {
 	case config.ChatModelConfig:
-		row.Name = "Chat 閰嶇疆"
+		row.Name = "Chat 配置"
 		row.Provider = v.Provider
 		row.BaseURL = v.BaseURL
 		row.ModelName = v.ModelName
@@ -162,7 +162,7 @@ func (s *SettingsService) seedProvider(ctx context.Context, kind string, src any
 		row.Temperature = v.Temperature
 		row.MaxTokens = v.MaxTokens
 	case config.EmbeddingConfig:
-		row.Name = "Embedding 閰嶇疆"
+		row.Name = "Embedding 配置"
 		row.Provider = v.Provider
 		row.BaseURL = v.BaseURL
 		row.ModelName = v.ModelName
@@ -212,7 +212,7 @@ func (s *SettingsService) seedProvider(ctx context.Context, kind string, src any
 	return s.db.WithContext(ctx).Create(&db.AIProviderProfile{
 		ID:          uuid.NewString(),
 		Kind:        legacyRow.Kind,
-		Name:        "杩佺Щ榛樿閰嶇疆",
+		Name:        "迁移默认配置",
 		Active:      true,
 		Provider:    legacyRow.Provider,
 		BaseURL:     legacyRow.BaseURL,
@@ -569,42 +569,54 @@ func (s *SettingsService) GetPromptGroupContent(ctx context.Context, groupID, ke
 	return fallback
 }
 
-const defaultAgentInstruction = `浣犳槸鏅鸿兘瀹㈡湇鍔╂墜锛岃礋璐ｈВ绛旂敤鎴峰叧浜庝骇鍝併€佽鍗曘€侀€€娆俱€侀厤閫佺瓑闂銆?
-宸ヤ綔鍘熷垯锛?1. 浼樺厛璋冪敤 knowledge_search 妫€绱?QA 鐭ヨ瘑搴擄紝鑾峰彇鐩镐技闂瓟瀵广€?2. 鑻ユ绱㈠埌楂樼浉浼煎害 QA锛屼紭鍏堜娇鐢ㄦ爣鍑?answer 鍥炵瓟锛屽彲閫傚害娑﹁壊浣嗕笉鏀瑰彉璇箟銆?3. 澶氫釜 QA 缁撴灉鏃讹紝缁煎悎鏈€鐩稿叧鐨?answer 浣滅瓟銆?4. 妫€绱㈡棤缁撴灉鏃讹紝濡傚疄鍛婄煡鐢ㄦ埛骞跺缓璁浆浜哄伐銆?5. 褰撶敤鎴锋槑纭姹備汉宸ュ鏈嶃€佹姇璇夊崌绾с€佹垨浣犳棤娉曡В鍐抽棶棰樻椂锛屼娇鐢?transfer_human 宸ュ叿杞帴浜哄伐銆?6. 涓嶈缂栭€犵煡璇嗗簱涓笉瀛樺湪鐨勪俊鎭€俙
+const defaultAgentInstruction = `你是智能客服助手，负责解答用户关于产品、订单、退款、配送等问题。
 
-const defaultRAGPrompt = `浣犳槸瀹㈡湇鍔╂墜銆傝鏍规嵁浠ヤ笅鐭ヨ瘑搴撳唴瀹瑰洖绛旂敤鎴烽棶棰樸€傝嫢鐭ヨ瘑搴撴棤鍏筹紝璇峰瀹炶鏄庛€?
-鐭ヨ瘑搴擄細
+工作原则：
+1. 优先调用 knowledge_search 检索 QA 知识库，获取相似问答对。
+2. 若检索到高相似度 QA，优先使用标准 answer 回答，可适度润色但不改变语义。
+3. 多个 QA 结果时，综合最相关的 answer 作答。
+4. 检索无结果时，如实告知用户并建议转人工。
+5. 当用户明确要求人工客服、投诉升级、或你无法解决问题时，使用 transfer_human 工具转接人工。
+6. 不要编造知识库中不存在的信息。`
+
+const defaultRAGPrompt = `你是客服助手。请根据以下知识库内容回答用户问题。若知识库无关，请如实说明。
+
+知识库：
 {{context}}
 
-鐢ㄦ埛闂锛歿{query}}`
+用户问题：{{query}}`
 
-const defaultClassifyPrompt = `浣犳槸瀹㈡湇鐭ヨ瘑搴撳垎绫诲姪鎵嬨€傛牴鎹棶绛斿唴瀹癸紝浠庡巻鍙插垎绫讳笌鏍囩涓€夋嫨鎴栫敓鎴愬悎閫傜殑 category 涓?tags銆?浼樺厛澶嶇敤鍘嗗彶鍒嗙被/鏍囩锛涜嫢閮戒笉鍚堥€傚啀鍒涘缓绠€鐭腑鏂囨柊鍊笺€?鍙緭鍑?JSON锛屼笉瑕?markdown锛歿"category":"...","tags":["..."]}
+const defaultClassifyPrompt = `你是客服知识库分类助手。根据问答内容，从历史分类与标签中选择或生成合适的 category 与 tags。
+优先复用历史分类/标签；若都不合适再创建简短中文新值。
+只输出 JSON，不要 markdown：{"category":"...","tags":["..."]}
 
-鍘嗗彶鍒嗙被锛歿{categories}}
-鍘嗗彶鏍囩锛歿{tags}}
+历史分类：{{categories}}
+历史标签：{{tags}}
 
-闂锛歿{question}}
-绛旀锛歿{answer}}`
+问题：{{question}}
+答案：{{answer}}`
 
-const defaultIntentRoutePrompt = `浣犳槸瀹㈡湇闂鎰忓浘鍒嗘瀽鍣ㄣ€備綘瑕佸垽鏂細杩欎釜鐢ㄦ埛闂鏄惁闇€瑕佹绱?QA 鐭ヨ瘑搴擄紙knowledge_search锛夈€?
-鍙緭鍑?JSON锛歿"intent":"...","need_search":true/false,"confidence":0.0-1.0,"reason":"..."}
+const defaultIntentRoutePrompt = `你是客服问题意图分析器。你要判断：这个用户问题是否需要检索 QA 知识库（knowledge_search）。
 
-鍒ゅ畾鍘熷垯锛堜妇渚嬶級锛?- 闇€瑕佹绱紙need_search=true锛夛細浜у搧瑙勫垯/鍞悗/閫€娆?閰嶉€?鍙戠エ/浼氬憳鏉冪泭/浣跨敤璇存槑/甯歌闂/鏀跨瓥鏉℃/瀵规瘮閫夋嫨 绛夐渶瑕佲€滄湁鏍囧噯绛旀鈥濈殑闂
-- 涓嶉渶瑕佹绱紙need_search=false锛夛細闂茶亰瀵掓殑銆佹儏缁娉勪絾鏃犲叿浣撻棶棰樸€佷粎璇磋阿璋?鍐嶈銆佺函绮硅浣犲杩般€佷笌瀹㈡湇鏃犲叧鐨勫紑鏀鹃棽鑱娿€佽浣犵紪鏁呬簨/鍐欒瘲銆佷粎瑕佹眰杞汉宸ワ紙姝ょ被鍙洿鎺ヨ蛋杞汉宸ユ祦绋嬶級
+只输出 JSON：{"intent":"...","need_search":true/false,"confidence":0.0-1.0,"reason":"..."}
 
-鐢ㄦ埛闂锛歿{query}}`
+判定原则（举例）：
+- 需要检索（need_search=true）：产品规则/售后/退款/配送/发票/会员权益/使用说明/常见问题/政策条款/对比选择 等需要“有标准答案”的问题
+- 不需要检索（need_search=false）：闲聊寒暄、情绪宣泄但无具体问题、仅说谢谢/再见、纯粹让你复述、与客服无关的开放闲聊、让你编故事/写诗、仅要求转人工（此类可直接走转人工流程）
 
-const defaultAgentFallbackReply = `褰撳墠闂鏆備笉鏀寔缁х画鐢辨櫤鑳藉鏈嶅鐞嗭紝璇风◢鍚庡啀璇曟垨鑱旂郴浜哄伐瀹㈡湇銆俙
+用户问题：{{query}}`
 
-const defaultSmalltalkReply = `浣犲ソ锛屾垜鏄櫤鑳藉鏈嶅姪鎵嬨€備綘鍙互鐩存帴鍜ㄨ璁㈠崟銆侀€€娆俱€侀厤閫併€佸彂绁ㄣ€佸敭鍚庣瓑闂锛屾垜浼氫紭鍏堜粠鐭ヨ瘑搴撲腑涓轰綘鏌ユ壘鏍囧噯绛旀銆俙
+const defaultAgentFallbackReply = `当前问题暂不支持继续由智能客服处理，请稍后再试或联系人工客服。`
 
-const defaultHandoffReply = `宸蹭负浣犺褰曚汉宸ュ鏈嶈瘔姹傦紝璇风◢鍊欙紝鎴戜滑浼氬敖蹇负浣犺浆鎺ヤ汉宸ュ鏈嶃€俙
+const defaultSmalltalkReply = `你好，我是智能客服助手。你可以直接咨询订单、退款、配送、发票、售后等问题，我会优先从知识库中为你查找标准答案。`
 
-const defaultOutOfScopeReply = `褰撳墠鎴戜富瑕佹敮鎸佽鍗曘€侀€€娆俱€侀厤閫併€佸彂绁ㄣ€佸敭鍚庣瓑瀹㈡湇闂銆備綘鍙互琛ュ厖鏇村叿浣撶殑涓氬姟闂锛屾垨鑱旂郴浜哄伐瀹㈡湇杩涗竴姝ュ鐞嗐€俙
+const defaultHandoffReply = `已为你记录人工客服诉求，请稍候，我们会尽快为你转接人工客服。`
 
-const defaultNoHitReply = `鎴戞殏鏃舵病鏈夊湪鐭ヨ瘑搴撲腑鎵惧埌涓庝綘闂鐩存帴瀵瑰簲鐨勬爣鍑嗙瓟妗堛€備綘鍙互琛ュ厖鏇村叿浣撶殑璁㈠崟銆侀€€娆俱€侀厤閫佹垨鍞悗淇℃伅锛屾垜鍐嶅府浣犳煡鎵撅紱濡傞渶浜哄伐瀹㈡湇锛屼篃鍙互鐩存帴璇存槑銆俙
+const defaultOutOfScopeReply = `当前我主要支持订单、退款、配送、发票、售后等客服问题。你可以补充更具体的业务问题，或联系人工客服进一步处理。`
 
-const defaultContextLimitReply = `褰撳墠瀵硅瘽鍐呭杈冮暱锛屽缓璁綘寮€鍚竴涓柊浼氳瘽鍚庨噸鏂版弿杩伴棶棰橈紝杩欐牱鎴戣兘鏇村揩浠庣煡璇嗗簱涓负浣犳煡鎵炬爣鍑嗙瓟妗堛€俙
+const defaultNoHitReply = `我暂时没有在知识库中找到与你问题直接对应的标准答案。你可以补充更具体的订单、退款、配送或售后信息，我再帮你查找；如需人工客服，也可以直接说明。`
+
+const defaultContextLimitReply = `当前对话内容较长，建议你开启一个新会话后重新描述问题，这样我能更快从知识库中为你查找标准答案。`
 
 func applyProviderProfileRequest(row *db.AIProviderProfile, kind string, req UpdateProviderRequest) {
 	if req.Name != nil {
@@ -634,9 +646,9 @@ func applyProviderProfileRequest(row *db.AIProviderProfile, kind string, req Upd
 
 func defaultProfileName(kind string) string {
 	if kind == ProviderKindEmbedding {
-		return "鏂板缓 Embedding 閰嶇疆"
+		return "新建 Embedding 配置"
 	}
-	return "鏂板缓 Chat 閰嶇疆"
+	return "新建 Chat 配置"
 }
 
 func intPtr(v int) *int {

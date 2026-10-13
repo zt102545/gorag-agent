@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"context"
@@ -224,12 +224,12 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	decision.NeedHuman = containsToolCall(assistantToolCalls, "transfer_human")
 	h.captureUnanswered(c.Request.Context(), decision, req.Message, content, sessionID, requestID, bizCtx)
 	if content != "" || len(assistantToolCalls) > 0 {
-		decision.addTrace("agent_runner", "Agent 鎵ц", "finished", "妯″瀷鐢熸垚鍥炲骞跺彲鑳藉彂璧峰伐鍏疯皟鐢?, nil, map[string]any{
+		decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
 			"content_chars": len([]rune(content)),
 			"tool_calls":    len(assistantToolCalls),
 		}, nil, start)
 		for _, call := range assistantToolCalls {
-			decision.addTrace("tool_call", "宸ュ叿璋冪敤", "finished", call.Function.Name, map[string]any{
+			decision.addTrace("tool_call", "工具调用", "finished", call.Function.Name, map[string]any{
 				"name":      call.Function.Name,
 				"arguments": call.Function.Arguments,
 			}, nil, nil, time.Time{})
@@ -322,12 +322,12 @@ func (h *ChatHandler) Ask(c *gin.Context) {
 	decision.KnowledgeShared = containsToolCall(toolCalls, "knowledge_search")
 	decision.NeedHuman = containsToolCall(toolCalls, "transfer_human")
 	h.captureUnanswered(c.Request.Context(), decision, req.Question, answer, "", requestID, bizCtx)
-	decision.addTrace("agent_runner", "Agent 鎵ц", "finished", "妯″瀷鐢熸垚鍥炲骞跺彲鑳藉彂璧峰伐鍏疯皟鐢?, nil, map[string]any{
+	decision.addTrace("agent_runner", "Agent 执行", "finished", "模型生成回复并可能发起工具调用", nil, map[string]any{
 		"content_chars": len([]rune(answer)),
 		"tool_calls":    len(toolCalls),
 	}, nil, start)
 	for _, call := range toolCalls {
-		decision.addTrace("tool_call", "宸ュ叿璋冪敤", "finished", call.Function.Name, map[string]any{
+		decision.addTrace("tool_call", "工具调用", "finished", call.Function.Name, map[string]any{
 			"name":      call.Function.Name,
 			"arguments": call.Function.Arguments,
 		}, nil, nil, time.Time{})
@@ -499,8 +499,13 @@ func (h *ChatHandler) buildMessages(ctx context.Context, history []*schema.Messa
 			messages = append(messages, schema.SystemMessage(instruction))
 		}
 	}
-	messages = append(messages, schema.SystemMessage(`鐢变綘鍒ゆ柇鏈疆鏄惁闇€瑕佷娇鐢ㄥ伐鍏凤細
-- 娑夊強浜у搧鍔熻兘銆佹搷浣滄柟娉曘€佽处鍙枫€佸厖鍊笺€佽鍒欍€佸敭鍚庣瓑闇€瑕佷簨瀹炰緷鎹殑闂锛岃皟鐢?knowledge_search銆傝拷闂椂鍏堢粨鍚堝巻鍙叉妸鎸囦唬琛ュ叏鎴愰€傚悎妫€绱㈢殑鐙珛闂銆?- knowledge_search 浼氳繑鍥炲鏉″€欓€?QA銆備綘蹇呴』姣旇緝闂鐩稿叧鎬у拰绛旀鍐呭锛屽彧閲囩敤鑳界洿鎺ユ敮鎸佹湰杞洖绛旂殑鍊欓€夛紱鍙互缁煎悎澶氭潯锛屼絾涓嶈鍥犱负杩斿洖浜嗗€欓€夊氨榛樿瀹冧滑閮芥纭浉鍏炽€?- 鐭ヨ瘑搴撹瘉鎹冻澶熸椂锛岀敤鑷劧銆佺畝鐭殑瀹㈡湇鍙ｅ惢缁勭粐鏈€缁堢瓟澶嶏紝涓嶈鏆撮湶妫€绱㈣繃绋嬨€佸垎鏁版垨宸ュ叿鍚嶇О锛涜瘉鎹笉瓒虫椂鏄庣‘璇存槑鏆傛椂娌℃湁鏌ュ埌锛屼笉瑕佺紪閫犮€?- 瀵掓殑銆佹劅璋㈢瓑鏃犻渶涓氬姟浜嬪疄鐨勯棶棰樺彲浠ョ洿鎺ュ洖澶嶏紝涓嶅繀妫€绱紱鐢ㄦ埛鏄庣‘瑕佹眰浜哄伐瀹㈡湇鏃惰皟鐢?transfer_human銆?- 浣犱細鏀跺埌鏈€杩戞渶澶?10 鏉″巻鍙叉秷鎭€傛棤璁哄綋鍓嶉棶棰樻渶缁堝睘浜庤拷闂繕鏄嫭绔嬫柊闂锛岄兘瑕佸弬鑰冨叾涓笂涓€鏉＄敤鎴烽棶棰樺悗鑷鍒ゆ柇涓婁笅鏂囧叧绯伙紱涓嶈杈撳嚭鍏崇郴鍒嗙被杩囩▼锛屼篃涓嶈璇锋眰棰濆鐨勬剰鍥惧垽鏂眰銆?- 鍘嗗彶瀵硅瘽鍙敤浜庣悊瑙ｆ湰杞棶棰樺拰娑堣В鎸囦唬锛屾渶缁堝彧鍥炵瓟鏈疆璇夋眰銆俙))
+	messages = append(messages, schema.SystemMessage(`由你判断本轮是否需要使用工具：
+- 涉及产品功能、操作方法、账号、充值、规则、售后等需要事实依据的问题，调用 knowledge_search。追问时先结合历史把指代补全成适合检索的独立问题。
+- knowledge_search 会返回多条候选 QA。你必须比较问题相关性和答案内容，只采用能直接支持本轮回答的候选；可以综合多条，但不要因为返回了候选就默认它们都正确相关。
+- 知识库证据足够时，用自然、简短的客服口吻组织最终答复，不要暴露检索过程、分数或工具名称；证据不足时明确说明暂时没有查到，不要编造。
+- 寒暄、感谢等无需业务事实的问题可以直接回复，不必检索；用户明确要求人工客服时调用 transfer_human。
+- 你会收到最近最多 10 条历史消息。无论当前问题最终属于追问还是独立新问题，都要参考其中上一条用户问题后自行判断上下文关系；不要输出关系分类过程，也不要请求额外的意图判断层。
+- 历史对话只用于理解本轮问题和消解指代，最终只回答本轮诉求。`))
 	messages = append(messages, history...)
 	messages = append(messages, userMsg)
 	return userMsg, messages
@@ -519,17 +524,17 @@ func (h *ChatHandler) decideChat(ctx context.Context, history []*schema.Message,
 	if exceedsContextLimit(0, cfg.MaxContextChars, history, trimmed) {
 		decision.Reply = h.settings.GetPromptContent(ctx, admin.PromptChatContextLimit, cfg.DefaultReply)
 		decision.UsedDefaultReply = true
-		decision.addTrace("context_limit", "涓婁笅鏂囬暱搴︽鏌?, "blocked", "鏈€杩?10 鏉′笂涓嬫枃鐨勫瓧绗︽暟浠嶈秴杩囬檺鍒讹紝鐩存帴杩斿洖榛樿鍥炲", map[string]any{
+		decision.addTrace("context_limit", "上下文长度检查", "blocked", "最近 10 条上下文的字符数仍超过限制，直接返回默认回复", map[string]any{
 			"history_messages": len(history),
 			"input_chars":      len([]rune(trimmed)),
 		}, nil, nil, time.Time{})
 		return decision, nil
 	}
-	decision.addTrace("context_limit", "涓婁笅鏂囬暱搴︽鏌?, "finished", "宸叉惡甯︽渶杩戜笉瓒呰繃 10 鏉″巻鍙叉秷鎭紝鏈秴杩囧瓧绗﹂檺鍒?, map[string]any{
+	decision.addTrace("context_limit", "上下文长度检查", "finished", "已携带最近不超过 10 条历史消息，未超过字符限制", map[string]any{
 		"history_messages": len(history),
 		"input_chars":      len([]rune(trimmed)),
 	}, nil, nil, time.Time{})
-	decision.addTrace("agent_delegation", "Agent 鑷富鍐崇瓥", "finished", "姝ｅ父璇锋眰缁熶竴浜ょ粰 Agent锛岀敱妯″瀷鑷鍐冲畾鏄惁璋冪敤鐭ヨ瘑搴撴垨杞汉宸ュ伐鍏?, map[string]any{
+	decision.addTrace("agent_delegation", "Agent 自主决策", "finished", "正常请求统一交给 Agent，由模型自行决定是否调用知识库或转人工工具", map[string]any{
 		"query": trimmed,
 	}, map[string]any{
 		"route": "model_driven_agent",
@@ -571,7 +576,7 @@ func (h *ChatHandler) captureUnanswered(ctx context.Context, decision chatDecisi
 
 func looksUnanswered(answer string) bool {
 	normalized := normalizeRuleText(answer)
-	for _, marker := range []string{"涓嶇煡閬?, "涓嶆竻妤?, "鏃犳硶鍥炵瓟", "鏃犳硶纭畾", "娌℃湁瓒冲淇℃伅", "鏈壘鍒扮浉鍏?, "鐭ヨ瘑搴撲腑娌℃湁", "寤鸿鍜ㄨ浜哄伐", "璇疯仈绯讳汉宸ュ鏈?} {
+	for _, marker := range []string{"不知道", "不清楚", "无法回答", "无法确定", "没有足够信息", "未找到相关", "知识库中没有", "建议咨询人工", "请联系人工客服"} {
 		if strings.Contains(normalized, normalizeRuleText(marker)) {
 			return true
 		}
@@ -655,7 +660,7 @@ func persistenceContext(ctx context.Context) (context.Context, context.CancelFun
 
 func normalizeRuleText(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	replacer := strings.NewReplacer(" ", "", "锛?, "", ",", "", "銆?, "", "锛?, "", "!", "", "锛?, "", "?", "", "\n", "", "\r", "", "\t", "")
+	replacer := strings.NewReplacer(" ", "", "，", "", ",", "", "。", "", "！", "", "!", "", "？", "", "?", "", "\n", "", "\r", "", "\t", "")
 	return replacer.Replace(value)
 }
 
