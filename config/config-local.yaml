@@ -19,3 +19,8 @@ vector_store:
     index_name: customer_service_qa
     key_prefix: "cs_qa:"
     vector_field: vector_content
+
+# 本地 chat 模型走 OpenAI 兼容协议（DeepSeek）
+ai:
+  chat_model:
+    provider: openai

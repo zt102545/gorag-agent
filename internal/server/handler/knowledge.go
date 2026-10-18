@@ -1,4 +1,4 @@
-﻿package handler
+package handler
 
 import (
 	"net/http"
@@ -284,13 +284,7 @@ func (h *KnowledgeHandler) Tags(c *gin.Context) {
 }
 
 func (h *KnowledgeHandler) canUseEmbedding(c *gin.Context) bool {
-	if h.settings == nil {
-		return true
-	}
-	if !h.settings.EmbeddingConfigured(c.Request.Context()) {
-		response.Error(c, http.StatusServiceUnavailable, "embedding model is not configured in GM")
-		return false
-	}
+	// 未配置 embedding 时退化为纯关键词检索（只存文本、BM25 检索），不再拦截入库操作。
 	return true
 }
 

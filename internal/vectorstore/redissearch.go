@@ -36,9 +36,6 @@ func (s *RedisSearchStore) key(id string) string {
 }
 
 func (s *RedisSearchStore) Ensure(ctx context.Context, dim int) error {
-	if dim <= 0 {
-		return fmt.Errorf("embedding dimensions must be configured before creating redissearch index")
-	}
 	s.dim = dim
 	_, err := s.client.FTInfo(ctx, s.indexName).Result()
 	if err == nil {
@@ -50,7 +47,10 @@ func (s *RedisSearchStore) Ensure(ctx context.Context, dim int) error {
 		{FieldName: "answer", FieldType: redis.SearchFieldTypeText, Weight: 1},
 		{FieldName: "category", FieldType: redis.SearchFieldTypeTag},
 		{FieldName: "tags", FieldType: redis.SearchFieldTypeText, Weight: 2},
-		{
+	}
+	// 未配置 embedding 维度（dim<=0）时不建向量字段，退化为纯关键词（BM25）检索。
+	if dim > 0 {
+		schemas = append(schemas, &redis.FieldSchema{
 			FieldName: s.vectorField,
 			FieldType: redis.SearchFieldTypeVector,
 			VectorArgs: &redis.FTVectorArgs{
@@ -60,7 +60,7 @@ func (s *RedisSearchStore) Ensure(ctx context.Context, dim int) error {
 					DistanceMetric: "COSINE",
 				},
 			},
-		},
+		})
 	}
 	_, err = s.client.FTCreate(ctx, s.indexName, &redis.FTCreateOptions{
 		OnHash:          true,
@@ -74,18 +74,18 @@ func (s *RedisSearchStore) Ensure(ctx context.Context, dim int) error {
 }
 
 func (s *RedisSearchStore) Upsert(ctx context.Context, rec Record) error {
-	if len(rec.Vector) == 0 {
-		return fmt.Errorf("vector is empty for id=%s", rec.ID)
-	}
-	blob := floatsToBytes(rec.Vector)
 	tags := strings.Join(rec.Tags, ",")
-	return s.client.HSet(ctx, s.key(rec.ID), map[string]any{
-		"question":    rec.Question,
-		"answer":      rec.Answer,
-		"category":    rec.Category,
-		"tags":        tags,
-		s.vectorField: blob,
-	}).Err()
+	fields := map[string]any{
+		"question": rec.Question,
+		"answer":   rec.Answer,
+		"category": rec.Category,
+		"tags":     tags,
+	}
+	// 未配置 embedding 时 Vector 为空，只存文本字段，走纯关键词检索。
+	if len(rec.Vector) > 0 {
+		fields[s.vectorField] = floatsToBytes(rec.Vector)
+	}
+	return s.client.HSet(ctx, s.key(rec.ID), fields).Err()
 }
 
 func (s *RedisSearchStore) Delete(ctx context.Context, id string) error {

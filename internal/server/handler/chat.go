@@ -435,10 +435,7 @@ func (h *ChatHandler) canHandleChat(c *gin.Context) bool {
 		response.Error(c, http.StatusServiceUnavailable, "chat model is not configured in GM")
 		return false
 	}
-	if !h.settings.EmbeddingConfigured(c.Request.Context()) {
-		response.Error(c, http.StatusServiceUnavailable, "embedding model is not configured in GM")
-		return false
-	}
+	// 未配置 embedding 时不再拦截：RAG 检索会退化为纯关键词（BM25）。
 	return true
 }
 

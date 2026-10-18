@@ -1,9 +1,10 @@
-﻿package qa
+package qa
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -78,7 +79,9 @@ func (s *Service) embedQuestion(ctx context.Context, question string) ([]float32
 func (s *Service) upsertItem(ctx context.Context, item *Item) error {
 	vec, err := s.embedQuestion(ctx, item.Question)
 	if err != nil {
-		return fmt.Errorf("embed: %w", err)
+		// embedding 未配置或失败时退回纯关键词检索：只存文本、不存向量。
+		log.Printf("[qa] embed question %s failed (%v), fallback to text-only index", item.ID, err)
+		vec = nil
 	}
 	return s.store.Upsert(ctx, vectorstore.Record{
 		ID:       item.ID,
