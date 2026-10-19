@@ -1,18 +1,20 @@
-﻿package vectorstore
+package vectorstore
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/milvus-io/milvus/client/v3/column"
+	"github.com/milvus-io/milvus/client/v3/entity"
+	"github.com/milvus-io/milvus/client/v3/index"
+	"github.com/milvus-io/milvus/client/v3/milvusclient"
 
 	"github.com/gorag-ai/gorag/internal/config"
 )
 
 type MilvusStore struct {
-	client     client.Client
+	client     *milvusclient.Client
 	collection string
 	metric     entity.MetricType
 	dim        int
@@ -27,18 +29,13 @@ func NewMilvusStore(ctx context.Context, cfg config.MilvusStoreConfig) (*MilvusS
 		return nil, fmt.Errorf("milvus address or uri is required")
 	}
 
-	mcfg := client.Config{
+	cli, err := milvusclient.New(ctx, &milvusclient.ClientConfig{
 		Address:  address,
 		Username: cfg.Username,
 		Password: cfg.Password,
 		DBName:   cfg.Database,
 		APIKey:   cfg.Token,
-	}
-	if strings.HasPrefix(strings.ToLower(address), "https://") {
-		mcfg.EnableTLSAuth = true
-	}
-
-	cli, err := client.NewClient(ctx, mcfg)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("connect milvus: %w", err)
 	}
@@ -67,63 +64,49 @@ func (s *MilvusStore) Ensure(ctx context.Context, dim int) error {
 		return fmt.Errorf("embedding dimensions must be configured before creating milvus collection")
 	}
 	s.dim = dim
-	exists, err := s.client.HasCollection(ctx, s.collection)
+	has, err := s.client.HasCollection(ctx, milvusclient.NewHasCollectionOption(s.collection))
 	if err != nil {
 		return fmt.Errorf("has collection: %w", err)
 	}
-	if !exists {
-		schema := &entity.Schema{
-			CollectionName: s.collection,
-			Description:    "customer service QA vectors",
-			Fields: []*entity.Field{
-				{
-					Name:       "id",
-					DataType:   entity.FieldTypeVarChar,
-					PrimaryKey: true,
-					AutoID:     false,
-					TypeParams: map[string]string{"max_length": "64"},
-				},
-				{
-					Name:       "question",
-					DataType:   entity.FieldTypeVarChar,
-					TypeParams: map[string]string{"max_length": "4096"},
-				},
-				{
-					Name:       "answer",
-					DataType:   entity.FieldTypeVarChar,
-					TypeParams: map[string]string{"max_length": "8192"},
-				},
-				{
-					Name:       "category",
-					DataType:   entity.FieldTypeVarChar,
-					TypeParams: map[string]string{"max_length": "256"},
-				},
-				{
-					Name:       "tags",
-					DataType:   entity.FieldTypeVarChar,
-					TypeParams: map[string]string{"max_length": "1024"},
-				},
-				{
-					Name:     "vector",
-					DataType: entity.FieldTypeFloatVector,
-					TypeParams: map[string]string{
-						"dim": fmt.Sprintf("%d", dim),
-					},
-				},
-			},
-		}
-		if err := s.client.CreateCollection(ctx, schema, 1); err != nil {
+	if !has {
+		schema := entity.NewSchema().
+			WithDescription("customer service QA vectors").
+			WithField(entity.NewField().
+				WithName("id").
+				WithDataType(entity.FieldTypeVarChar).
+				WithIsPrimaryKey(true).
+				WithMaxLength(64)).
+			WithField(entity.NewField().
+				WithName("question").
+				WithDataType(entity.FieldTypeVarChar).
+				WithMaxLength(4096)).
+			WithField(entity.NewField().
+				WithName("answer").
+				WithDataType(entity.FieldTypeVarChar).
+				WithMaxLength(8192)).
+			WithField(entity.NewField().
+				WithName("category").
+				WithDataType(entity.FieldTypeVarChar).
+				WithMaxLength(256)).
+			WithField(entity.NewField().
+				WithName("tags").
+				WithDataType(entity.FieldTypeVarChar).
+				WithMaxLength(1024)).
+			WithField(entity.NewField().
+				WithName("vector").
+				WithDataType(entity.FieldTypeFloatVector).
+				WithDim(int64(dim)))
+
+		if err := s.client.CreateCollection(ctx, milvusclient.NewCreateCollectionOption(s.collection, schema).
+			WithIndexOptions(milvusclient.NewCreateIndexOption(s.collection, "vector", index.NewHNSWIndex(s.metric, 16, 200)))); err != nil {
 			return fmt.Errorf("create collection: %w", err)
 		}
-		idx, err := entity.NewIndexHNSW(s.metric, 16, 200)
-		if err != nil {
-			return fmt.Errorf("new hnsw index: %w", err)
-		}
-		if err := s.client.CreateIndex(ctx, s.collection, "vector", idx, false); err != nil {
-			return fmt.Errorf("create index: %w", err)
-		}
 	}
-	if err := s.client.LoadCollection(ctx, s.collection, false); err != nil {
+	loadTask, err := s.client.LoadCollection(ctx, milvusclient.NewLoadCollectionOption(s.collection))
+	if err != nil {
+		return fmt.Errorf("load collection: %w", err)
+	}
+	if err := loadTask.Await(ctx); err != nil {
 		return fmt.Errorf("load collection: %w", err)
 	}
 	return nil
@@ -134,13 +117,13 @@ func (s *MilvusStore) Upsert(ctx context.Context, rec Record) error {
 		return fmt.Errorf("vector is empty for id=%s", rec.ID)
 	}
 	tags := strings.Join(rec.Tags, ",")
-	idCol := entity.NewColumnVarChar("id", []string{rec.ID})
-	qCol := entity.NewColumnVarChar("question", []string{rec.Question})
-	aCol := entity.NewColumnVarChar("answer", []string{rec.Answer})
-	cCol := entity.NewColumnVarChar("category", []string{rec.Category})
-	tCol := entity.NewColumnVarChar("tags", []string{tags})
-	vCol := entity.NewColumnFloatVector("vector", s.dim, [][]float32{rec.Vector})
-	_, err := s.client.Upsert(ctx, s.collection, "", idCol, qCol, aCol, cCol, tCol, vCol)
+	idCol := column.NewColumnVarChar("id", []string{rec.ID})
+	qCol := column.NewColumnVarChar("question", []string{rec.Question})
+	aCol := column.NewColumnVarChar("answer", []string{rec.Answer})
+	cCol := column.NewColumnVarChar("category", []string{rec.Category})
+	tCol := column.NewColumnVarChar("tags", []string{tags})
+	vCol := column.NewColumnFloatVector("vector", s.dim, [][]float32{rec.Vector})
+	_, err := s.client.Upsert(ctx, milvusclient.NewColumnBasedInsertOption(s.collection, idCol, qCol, aCol, cCol, tCol, vCol))
 	if err != nil {
 		return fmt.Errorf("milvus upsert: %w", err)
 	}
@@ -148,8 +131,11 @@ func (s *MilvusStore) Upsert(ctx context.Context, rec Record) error {
 }
 
 func (s *MilvusStore) Delete(ctx context.Context, id string) error {
-	expr := fmt.Sprintf(`id == "%s"`, strings.ReplaceAll(id, `"`, ``))
-	return s.client.Delete(ctx, s.collection, "", expr)
+	_, err := s.client.Delete(ctx, milvusclient.NewDeleteOption(s.collection).WithStringIDs("id", []string{id}))
+	if err != nil {
+		return fmt.Errorf("milvus delete: %w", err)
+	}
+	return nil
 }
 
 func (s *MilvusStore) SearchText(context.Context, string, int) ([]Record, error) {
@@ -163,40 +149,31 @@ func (s *MilvusStore) Search(ctx context.Context, queryVector []float32, topK in
 	if len(queryVector) == 0 {
 		return nil, fmt.Errorf("query vector is empty")
 	}
-	sp, err := entity.NewIndexHNSWSearchParam(16)
-	if err != nil {
-		return nil, err
-	}
-	results, err := s.client.Search(
-		ctx,
+	resultSets, err := s.client.Search(ctx, milvusclient.NewSearchOption(
 		s.collection,
-		nil,
-		"",
-		[]string{"id", "question", "answer", "category", "tags"},
-		[]entity.Vector{entity.FloatVector(queryVector)},
-		"vector",
-		s.metric,
 		topK,
-		sp,
-	)
+		[]entity.Vector{entity.FloatVector(queryVector)},
+	).WithANNSField("vector").
+		WithOutputFields("id", "question", "answer", "category", "tags").
+		WithAnnParam(index.NewHNSWAnnParam(16)))
 	if err != nil {
 		return nil, fmt.Errorf("milvus search: %w", err)
 	}
 	out := make([]Record, 0)
-	for _, r := range results {
+	for _, r := range resultSets {
 		if r.Err != nil {
 			return nil, r.Err
 		}
 		n := r.ResultCount
-		ids := columnStrings(r.Fields.GetColumn("id"), n)
+		ids := columnStrings(r.GetColumn("id"), n)
 		// Prefer explicit id field; fall back to result IDs column.
 		if len(ids) == 0 || (n > 0 && ids[0] == "") {
 			ids = columnStrings(r.IDs, n)
 		}
-		questions := columnStrings(r.Fields.GetColumn("question"), n)
-		answers := columnStrings(r.Fields.GetColumn("answer"), n)
-		categories := columnStrings(r.Fields.GetColumn("category"), n)
-		tagsCol := columnStrings(r.Fields.GetColumn("tags"), n)
+		questions := columnStrings(r.GetColumn("question"), n)
+		answers := columnStrings(r.GetColumn("answer"), n)
+		categories := columnStrings(r.GetColumn("category"), n)
+		tagsCol := columnStrings(r.GetColumn("tags"), n)
 		for i := 0; i < n; i++ {
 			rec := Record{
 				ID:       safeAt(ids, i),
@@ -218,33 +195,22 @@ func (s *MilvusStore) Search(ctx context.Context, queryVector []float32, topK in
 
 func (s *MilvusStore) Close() error {
 	if s.client != nil {
-		s.client.Close()
+		return s.client.Close(context.Background())
 	}
 	return nil
 }
 
-func columnStrings(col entity.Column, n int) []string {
+func columnStrings(col column.Column, n int) []string {
+	out := make([]string, n)
 	if col == nil {
-		return make([]string, n)
-	}
-	switch c := col.(type) {
-	case *entity.ColumnVarChar:
-		data := c.Data()
-		out := make([]string, n)
-		for i := 0; i < n && i < len(data); i++ {
-			out[i] = data[i]
-		}
-		return out
-	default:
-		out := make([]string, n)
-		for i := 0; i < n; i++ {
-			v, err := col.GetAsString(i)
-			if err == nil {
-				out[i] = v
-			}
-		}
 		return out
 	}
+	for i := 0; i < n; i++ {
+		if v, err := col.GetAsString(i); err == nil {
+			out[i] = v
+		}
+	}
+	return out
 }
 
 func safeAt(ss []string, i int) string {
